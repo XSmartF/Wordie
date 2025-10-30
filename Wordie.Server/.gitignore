@@ -1,0 +1,48 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+*.tmp
+*.temp
+
+# Visual Studio
+.vs/
+.vscode/
+*.swp
+*.swo
+
+# Rider
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NuGet
+packages/
+*.nupkg
+
+# EF Core
+Migrations/*.cs
+!Migrations/Initial.cs
+
+# Database
+*.db
+*.mdf
+*.ldf
+
+# Secrets
+appsettings.Development.json
+secrets.json
+
+# Build
+*.exe
+*.dll
+*.pdb
+
+# Logs
+logs/
+*.log
