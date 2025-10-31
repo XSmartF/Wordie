@@ -1,0 +1,4 @@
+.container { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:0.5rem 0 }
+.left { display:flex; align-items:center; gap:0.5rem }
+.center { display:flex; gap:0.25rem; align-items:center }
+.ellipsis { padding: 0 0.5rem; color: #6b7280 }

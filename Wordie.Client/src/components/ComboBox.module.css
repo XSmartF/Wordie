@@ -1,0 +1,12 @@
+.root { position: relative; display: inline-block; width: auto; min-width: 120px }
+.input { display: inline-flex; align-items: center; width: 100%; min-width: 120px; padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid #e5e7eb; box-sizing: border-box; background: white; color: inherit; font: inherit }
+.input[type="button"], .input[role="button"] { /* ensure button variant looks like the input */
+	text-align: left;
+}
+.dropdown { position: absolute; left: 0; right: 0; margin-top: 0.4rem; background: white; border-radius: 8px; box-shadow: 0 8px 24px rgba(2,6,23,0.06); overflow: hidden; z-index: 1200 }
+.item { padding: 0.5rem 0.6rem; cursor: pointer }
+.item:hover { background: #f8fafc }
+.empty { padding: 0.5rem 0.6rem; color: #9ca3af }
+
+.innerSearchWrapper { padding: 0.4rem; border-bottom: 1px solid #f3f4f6 }
+.innerSearch { width: 100%; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #e5e7eb; box-sizing: border-box }

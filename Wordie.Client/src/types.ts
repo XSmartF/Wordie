@@ -40,19 +40,19 @@ export interface PagedResponse<T> {
 }
 
 export interface WordDto {
-  id: string;
-  term: string;
-  definition: string;
-  level: number;
-  wordSetId?: string;
-  userId: string;
+  Id: string;
+  Term: string;
+  Definition: string;
+  Level: number;
+  WordSetId?: string;
+  UserId: string;
 }
 
 export interface WordSetDto {
-  id: string;
-  title: string;
-  description?: string;
-  userId: string;
+  Id: string;
+  Title: string;
+  Description?: string;
+  UserId: string;
 }
 
 export interface CreateWordRequest {

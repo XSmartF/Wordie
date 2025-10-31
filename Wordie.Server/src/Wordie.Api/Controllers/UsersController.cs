@@ -29,11 +29,14 @@ public class UsersController : ControllerBase
     public async Task<ActionResult<PagedResponse<UserDto>>> Query([FromBody] PagedRequest request)
     {
         // Use the generic handler pattern directly here for brevity
-        var spec = new Application.Common.Specifications.PagedSpecification<ApplicationUser>(request);
-        var query = Wordie.Application.Common.Handlers.SpecificationEvaluatorHelper.GetQuery(_db.Set<ApplicationUser>().AsQueryable(), spec);
-        var total = await query.CountAsync();
-        var items = await query.ToListAsync();
-        var mapped = _mapper.Map<IReadOnlyList<UserDto>>(items);
-        return Ok(new PagedResponse<UserDto>(mapped, total, request.Page, request.PageSize));
+    var specNoPaging = new Application.Common.Specifications.PagedSpecification<ApplicationUser>(request, applyPaging: false);
+    var baseQuery = SpecificationEvaluatorHelper.GetQuery(_db.Set<ApplicationUser>().AsQueryable(), specNoPaging);
+    var total = await baseQuery.CountAsync();
+
+    var spec = new Application.Common.Specifications.PagedSpecification<ApplicationUser>(request, applyPaging: true);
+    var query = SpecificationEvaluatorHelper.GetQuery(_db.Set<ApplicationUser>().AsQueryable(), spec);
+    var items = await query.ToListAsync();
+    var mapped = _mapper.Map<IReadOnlyList<UserDto>>(items);
+    return Ok(new PagedResponse<UserDto>(mapped, total, request.Page, request.PageSize));
     }
 }

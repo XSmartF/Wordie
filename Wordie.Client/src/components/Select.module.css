@@ -1,0 +1,2 @@
+.select { padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid #e5e7eb; background: white }
+.select[multiple] { min-height: 40px }

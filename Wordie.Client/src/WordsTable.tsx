@@ -8,7 +8,7 @@ const WordsTable: React.FC = () => {
     Items: [],
     TotalCount: 0,
     Page: 1,
-    PageSize: 20,
+    PageSize: 10,
     TotalPages: 0,
     HasNext: false,
     HasPrevious: false,
@@ -17,27 +17,27 @@ const WordsTable: React.FC = () => {
 
   const columns = [
     {
-      key: 'term' as keyof WordDto,
+      key: 'Term' as keyof WordDto,
       header: 'Term',
       filterable: true,
       searchable: true,
       filterType: 'Text' as const
     },
     {
-      key: 'definition' as keyof WordDto,
+      key: 'Definition' as keyof WordDto,
       header: 'Definition',
       filterable: true,
       searchable: true,
       filterType: 'Text' as const
     },
     {
-      key: 'level' as keyof WordDto,
+      key: 'Level' as keyof WordDto,
       header: 'Level',
       filterable: true,
       filterType: 'Number' as const
     },
     {
-      key: 'wordSetId' as keyof WordDto,
+      key: 'WordSetId' as keyof WordDto,
       header: 'Word Set ID',
       filterable: true,
       filterType: 'Text' as const
@@ -46,7 +46,7 @@ const WordsTable: React.FC = () => {
 
   const fetchWords = async (
     page: number = 1,
-    pageSize: number = 20,
+    pageSize: number = 10,
     filters: FilterRule[] = [],
     sorts: { Field: string; Direction: SortDirection }[] = [],
     search?: SearchRule
@@ -74,7 +74,7 @@ const WordsTable: React.FC = () => {
   }, []);
 
   const handlePageChange = (page: number) => {
-    fetchWords(page, data.pageSize);
+    fetchWords(page, data.PageSize);
   };
 
   const handlePageSizeChange = (pageSize: number) => {

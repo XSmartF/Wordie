@@ -14,7 +14,7 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
     Items: [],
     TotalCount: 0,
     Page: 1,
-    PageSize: 20,
+    PageSize: 10,
     TotalPages: 0,
     HasNext: false,
     HasPrevious: false,
@@ -40,13 +40,19 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
       key: 'Level' as keyof WordDto,
       header: 'Level',
       filterable: true,
-      filterType: 'Number' as const
+      filterType: 'MultiSelect' as const,
+      options: [
+        { value: 1, label: 'Beginner' },
+        { value: 2, label: 'Intermediate' },
+        { value: 3, label: 'Advanced' },
+      ]
     },
+    // (Removed created date demo column to avoid incorrect filtering on Id)
   ];
 
   const fetchWords = useCallback(async (
     page: number = 1,
-    pageSize: number = 20,
+    pageSize: number = 10,
     filters: FilterRule[] = [],
     sorts: { Field: string; Direction: SortDirection }[] = [],
     search?: SearchRule
@@ -80,10 +86,10 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
 
   useEffect(() => {
     fetchWords();
-  }, [wordSetId]);
+  }, [wordSetId, fetchWords]);
 
   const handlePageChange = (page: number) => {
-    fetchWords(page, data.pageSize);
+    fetchWords(page, data.PageSize);
   };
 
   const handlePageSizeChange = (pageSize: number) => {

@@ -16,11 +16,13 @@ public class WordsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IMapper _mapper;
+    private readonly ILogger<WordsController> _logger;
 
-    public WordsController(ApplicationDbContext db, IMapper mapper)
+    public WordsController(ApplicationDbContext db, IMapper mapper, ILogger<WordsController> logger)
     {
         _db = db;
         _mapper = mapper;
+        _logger = logger;
     }
 
     // Accept complex PagedRequest in the body via POST for rich filtering/sorting
@@ -28,19 +30,30 @@ public class WordsController : ControllerBase
     [Authorize]
     public async Task<ActionResult<PagedResponse<WordDto>>> Query([FromBody] PagedRequest request)
     {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (userId == null) return Unauthorized();
+        _logger.LogInformation("WordsController.Query request: {Request}", System.Text.Json.JsonSerializer.Serialize(request));
+        try
+        {
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (userId == null) return Unauthorized();
 
-        request.Filters ??= new List<FilterRule>();
-        request.Filters.Add(new FilterRule { Field = "UserId", Operator = FilterOperator.Equal, Value = userId });
+            request.Filters ??= new List<FilterRule>();
+            request.Filters.Add(new FilterRule { Field = "UserId", Operator = FilterOperator.Equal, Value = userId });
 
-        // Use the generic handler pattern directly here for brevity
-        var spec = new Application.Common.Specifications.PagedSpecification<Word>(request);
-        var query = Wordie.Application.Common.Handlers.SpecificationEvaluatorHelper.GetQuery(_db.Set<Word>().AsQueryable(), spec);
-        var total = await query.CountAsync();
-        var items = await query.ToListAsync();
-        var mapped = _mapper.Map<IReadOnlyList<WordDto>>(items);
-        return Ok(new PagedResponse<WordDto>(mapped, total, request.Page, request.PageSize));
+            var specNoPaging = new Application.Common.Specifications.PagedSpecification<Word>(request, applyPaging: false);
+            var baseQuery = SpecificationEvaluatorHelper.GetQuery(_db.Set<Word>().AsQueryable(), specNoPaging);
+            var total = await baseQuery.CountAsync();
+
+            var spec = new Application.Common.Specifications.PagedSpecification<Word>(request, applyPaging: true);
+            var query = SpecificationEvaluatorHelper.GetQuery(_db.Set<Word>().AsQueryable(), spec);
+            var items = await query.ToListAsync();
+            var mapped = _mapper.Map<IReadOnlyList<WordDto>>(items);
+            return Ok(new PagedResponse<WordDto>(mapped, total, request.Page, request.PageSize));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in WordsController.Query");
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("{id}")]

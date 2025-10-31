@@ -1,7 +1,9 @@
 using Ardalis.Specification;
 using System.Linq.Expressions;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Globalization;
 using System.Collections.Generic;
 using Wordie.Application.Common.Models;
 
@@ -9,14 +11,16 @@ namespace Wordie.Application.Common.Specifications;
 
 public class PagedSpecification<TEntity> : Specification<TEntity> where TEntity : class
 {
-    public PagedSpecification(PagedRequest request)
+    public PagedSpecification(PagedRequest request, bool applyPaging = true)
     {
         if (request == null) return;
 
-        ApplyPaging(request);
-        ApplySorting(request);
+        // Apply filtering/sorting/search first, then optionally apply paging
         ApplyFiltering(request);
+        ApplySorting(request);
         ApplySearching(request);
+        if (applyPaging)
+            ApplyPaging(request);
     }
 
     private void ApplyPaging(PagedRequest request)
@@ -93,7 +97,8 @@ public class PagedSpecification<TEntity> : Specification<TEntity> where TEntity 
     {
         if (filter.Value == null) return null;
 
-        var propertyType = ((PropertyInfo)member.Member).PropertyType;
+    var propertyType = ((PropertyInfo)member.Member).PropertyType;
+    var nonNullableType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
 
         // Handle Between operator specially for range values
         if (filter.Operator == FilterOperator.Between)
@@ -134,7 +139,89 @@ public class PagedSpecification<TEntity> : Specification<TEntity> where TEntity 
             return combined;
         }
 
-        var constant = Expression.Constant(ConvertValue(filter.Value, propertyType));
+        // If Contains/NotContains requested on a non-string field, try to interpret as equality (useful for IDs)
+        if ((filter.Operator == FilterOperator.Contains || filter.Operator == FilterOperator.NotContains) && nonNullableType != typeof(string))
+        {
+            object converted;
+            try
+            {
+                converted = ConvertValue(filter.Value, propertyType);
+            }
+            catch
+            {
+                return null;
+            }
+
+            // Make constant match member type (handle Nullable<T>)
+            var constLiteral = Expression.Constant(converted, nonNullableType);
+            Expression constExpr;
+            if (constLiteral.Type == propertyType)
+                constExpr = constLiteral;
+            else
+                constExpr = Expression.Convert(constLiteral, propertyType);
+            return filter.Operator == FilterOperator.Contains ? Expression.Equal(member, constExpr) : Expression.NotEqual(member, constExpr);
+        }
+
+        object convertedValue;
+        try
+        {
+            convertedValue = ConvertValue(filter.Value, propertyType);
+        }
+        catch
+        {
+            // If we can't convert the filter value to the property type, skip this filter
+            return null;
+        }
+
+        // Support Include/Exclude operators for collections (MultiSelect) - build a Contains expression
+        if ((filter.Operator == FilterOperator.Include || filter.Operator == FilterOperator.Exclude))
+        {
+            // Convert provided values into an array of the member's non-nullable type
+            IEnumerable<object>? values = null;
+            if (filter.Value is JsonElement j && j.ValueKind == JsonValueKind.Array)
+            {
+                values = j.EnumerateArray().Select(x => ConvertValue(x, propertyType)).ToList();
+            }
+            else if (filter.Value is System.Collections.IEnumerable ie)
+            {
+                var list = new List<object>();
+                foreach (var v in ie)
+                {
+                    list.Add(ConvertValue(v!, propertyType));
+                }
+                values = list;
+            }
+
+            if (values == null) return null;
+
+            var valsList = values.ToList();
+            var array = Array.CreateInstance(nonNullableType, valsList.Count);
+            for (int i = 0; i < valsList.Count; i++)
+            {
+                var convertedElement = Convert.ChangeType(valsList[i], nonNullableType, CultureInfo.InvariantCulture);
+                array.SetValue(convertedElement, i);
+            }
+
+            var constantArray = Expression.Constant(array);
+            var containsMethod = typeof(Enumerable).GetMethods(BindingFlags.Static | BindingFlags.Public)
+                .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
+                .MakeGenericMethod(nonNullableType);
+
+            Expression memberValue = member;
+            if (memberValue.Type != nonNullableType)
+                memberValue = Expression.Convert(memberValue, nonNullableType);
+
+            var containsCall = Expression.Call(containsMethod, constantArray, memberValue);
+
+            return filter.Operator == FilterOperator.Include ? (Expression)containsCall : Expression.Not(containsCall);
+        }
+
+        var constLiteral2 = Expression.Constant(convertedValue, nonNullableType);
+        Expression constant;
+        if (constLiteral2.Type == propertyType)
+            constant = constLiteral2;
+        else
+            constant = Expression.Convert(constLiteral2, propertyType);
 
         return filter.Operator switch
         {
@@ -144,37 +231,71 @@ public class PagedSpecification<TEntity> : Specification<TEntity> where TEntity 
             FilterOperator.LessThan => Expression.LessThan(member, constant),
             FilterOperator.GreaterThanOrEqual => Expression.GreaterThanOrEqual(member, constant),
             FilterOperator.LessThanOrEqual => Expression.LessThanOrEqual(member, constant),
-            FilterOperator.Contains => Expression.Call(member, typeof(string).GetMethod(nameof(string.Contains), new[] { typeof(string) })!, constant),
-            FilterOperator.NotContains => Expression.Not(Expression.Call(member, typeof(string).GetMethod(nameof(string.Contains), new[] { typeof(string) })!, constant)),
+            FilterOperator.Contains when nonNullableType == typeof(string) => Expression.Call(member, typeof(string).GetMethod(nameof(string.Contains), new[] { typeof(string) })!, constant),
+            FilterOperator.NotContains when nonNullableType == typeof(string) => Expression.Not(Expression.Call(member, typeof(string).GetMethod(nameof(string.Contains), new[] { typeof(string) })!, constant)),
             _ => null
         };
     }
 
     private static object ConvertValue(object value, Type targetType)
     {
-        if (value is JsonElement json)
+        try
         {
-            if (json.ValueKind == JsonValueKind.Array)
-                return json.EnumerateArray().Select(x => ConvertValue(x, targetType)).ToList();
-            if (json.ValueKind == JsonValueKind.String && targetType == typeof(DateTime))
-                return DateTime.Parse(json.GetString()!);
-            if (json.ValueKind == JsonValueKind.Number && targetType == typeof(int))
-                return json.GetInt32();
-            if (json.ValueKind == JsonValueKind.String && targetType == typeof(Guid))
-                return Guid.Parse(json.GetString()!);
-            if (json.ValueKind == JsonValueKind.String && Nullable.GetUnderlyingType(targetType) == typeof(Guid))
-                return Guid.Parse(json.GetString()!);
+            var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+            if (value is JsonElement json)
+            {
+                if (json.ValueKind == JsonValueKind.Array)
+                    return json.EnumerateArray().Select(x => ConvertValue(x, underlyingType)).ToList();
+
+                if (json.ValueKind == JsonValueKind.String)
+                {
+                    var s = json.GetString();
+                    if (underlyingType == typeof(DateTime))
+                    {
+                        // Try ISO date first (yyyy-MM-dd), then fallback to general parse
+                        if (DateTime.TryParseExact(s!, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var dtExact))
+                            return dtExact;
+                        return DateTime.Parse(s!);
+                    }
+                    if (underlyingType == typeof(Guid))
+                        return Guid.Parse(s!);
+                    if (underlyingType.IsEnum)
+                        return Enum.Parse(underlyingType, s!);
+                    return Convert.ChangeType(s!, underlyingType, CultureInfo.InvariantCulture);
+                }
+
+                if (json.ValueKind == JsonValueKind.Number)
+                {
+                    // Use raw text and convert to target numeric type
+                    var raw = json.GetRawText();
+                    return Convert.ChangeType(raw, underlyingType, CultureInfo.InvariantCulture);
+                }
+            }
+
+            if (value is string str)
+            {
+                if (underlyingType == typeof(Guid))
+                    return Guid.Parse(str);
+                if (underlyingType.IsEnum)
+                    return Enum.Parse(underlyingType, str);
+            }
+
+            if (underlyingType.IsEnum)
+                return Enum.Parse(underlyingType, value.ToString()!);
+
+            return Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture);
         }
-
-        if (targetType == typeof(Guid) && value is string str)
-            return Guid.Parse(str);
-        if (Nullable.GetUnderlyingType(targetType) == typeof(Guid) && value is string str2)
-            return Guid.Parse(str2);
-
-        if (targetType.IsEnum)
-            return Enum.Parse(targetType, value.ToString()!);
-
-        return Convert.ChangeType(value, targetType);
+        catch (Exception ex)
+        {
+            // Log details for debugging filter conversion issues
+            try
+            {
+                Console.WriteLine($"ConvertValue failed. value type: {(value == null ? "null" : value.GetType().ToString())}, value: '{value}', targetType: {targetType}, exception: {ex}");
+            }
+            catch { }
+            throw;
+        }
     }
 
     private void ApplySearching(PagedRequest request)

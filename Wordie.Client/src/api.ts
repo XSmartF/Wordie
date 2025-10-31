@@ -19,17 +19,17 @@ api.interceptors.request.use((config) => {
 export const wordsApi = {
   query: async (request: PagedRequest): Promise<PagedResponse<WordDto>> => {
     const response = await api.post('/words/query', request);
-    return response.data;
+    return response.data as PagedResponse<WordDto>;
   },
 
   get: async (id: string): Promise<WordDto> => {
     const response = await api.get(`/words/${id}`);
-    return response.data;
+    return response.data as WordDto;
   },
 
   create: async (data: { term: string; definition: string; level: number; wordSetId?: string }): Promise<WordDto> => {
     const response = await api.post('/words', data);
-    return response.data;
+    return response.data as WordDto;
   },
 
   update: async (id: string, data: { term: string; definition: string; level: number; wordSetId?: string }): Promise<void> => {
@@ -44,22 +44,22 @@ export const wordsApi = {
 export const wordSetsApi = {
   getAll: async (): Promise<WordSetDto[]> => {
     const response = await api.get('/wordsets');
-    return response.data;
+    return response.data as WordSetDto[];
   },
 
   query: async (request: PagedRequest): Promise<PagedResponse<WordSetDto>> => {
     const response = await api.post('/wordsets/query', request);
-    return response.data;
+    return response.data as PagedResponse<WordSetDto>;
   },
 
   get: async (id: string): Promise<WordSetDto> => {
     const response = await api.get(`/wordsets/${id}`);
-    return response.data;
+    return response.data as WordSetDto;
   },
 
   create: async (data: { title: string; description?: string }): Promise<WordSetDto> => {
     const response = await api.post('/wordsets', data);
-    return response.data;
+    return response.data as WordSetDto;
   },
 
   update: async (id: string, data: { title: string; description?: string }): Promise<void> => {
@@ -72,7 +72,7 @@ export const wordSetsApi = {
 
   getWords: async (id: string, request: PagedRequest): Promise<PagedResponse<WordDto>> => {
     const response = await api.post(`/wordsets/${id}/words/query`, request);
-    return response.data;
+    return response.data as PagedResponse<WordDto>;
   },
 };
 

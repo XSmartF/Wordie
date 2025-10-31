@@ -8,7 +8,7 @@ const WordSetsTable: React.FC<{ onRowClick?: (wordSet: WordSetDto) => void }> = 
     Items: [],
     TotalCount: 0,
     Page: 1,
-    PageSize: 20,
+    PageSize: 10,
     TotalPages: 0,
     HasNext: false,
     HasPrevious: false,
@@ -17,14 +17,14 @@ const WordSetsTable: React.FC<{ onRowClick?: (wordSet: WordSetDto) => void }> = 
 
   const columns = [
     {
-      key: 'title' as keyof WordSetDto,
+      key: 'Title' as keyof WordSetDto,
       header: 'Title',
       filterable: true,
       searchable: true,
       filterType: 'Text' as const
     },
     {
-      key: 'description' as keyof WordSetDto,
+      key: 'Description' as keyof WordSetDto,
       header: 'Description',
       filterable: true,
       searchable: true,
@@ -34,7 +34,7 @@ const WordSetsTable: React.FC<{ onRowClick?: (wordSet: WordSetDto) => void }> = 
 
   const fetchWordSets = async (
     page: number = 1,
-    pageSize: number = 20,
+    pageSize: number = 10,
     filters: FilterRule[] = [],
     sorts: { Field: string; Direction: SortDirection }[] = [],
     search?: SearchRule
@@ -62,7 +62,7 @@ const WordSetsTable: React.FC<{ onRowClick?: (wordSet: WordSetDto) => void }> = 
   }, []);
 
   const handlePageChange = (page: number) => {
-    fetchWordSets(page, data.pageSize);
+    fetchWordSets(page, data.PageSize);
   };
 
   const handlePageSizeChange = (pageSize: number) => {
