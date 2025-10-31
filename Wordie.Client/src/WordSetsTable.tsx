@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Table from './Table';
+import { CommonDialog, Input } from './components';
 import { wordSetsApi } from './api';
 import type { WordSetDto, PagedRequest, PagedResponse, FilterRule, SortRule, SearchRule, SortDirection } from './types';
 
@@ -57,6 +58,35 @@ const WordSetsTable: React.FC<{ onRowClick?: (wordSet: WordSetDto) => void }> = 
     }
   };
 
+  // dialog state for create/edit/delete
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'create'|'edit'|'delete'>('create');
+  const [active, setActive] = useState<WordSetDto | null>(null);
+  const [titleVal, setTitleVal] = useState('');
+  const [descVal, setDescVal] = useState('');
+  // selection is handled by Table and passed to button callbacks; no local selectedItems needed
+  const [toDelete, setToDelete] = useState<WordSetDto[]>([]);
+
+  const openCreate = () => { setDialogMode('create'); setActive(null); setTitleVal(''); setDescVal(''); setDialogOpen(true); };
+  const openEdit = (ws: WordSetDto) => { setDialogMode('edit'); setActive(ws); setTitleVal(ws.Title || ''); setDescVal(ws.Description || ''); setDialogOpen(true); };
+  const openDelete = (items: WordSetDto[]) => { setDialogMode('delete'); setToDelete(items); setActive(items.length > 0 ? items[0] : null); setDialogOpen(true); };
+
+  const handleConfirm = async () => {
+    if (dialogMode === 'create') {
+      await wordSetsApi.create({ title: titleVal, description: descVal });
+      await fetchWordSets(1, data.PageSize);
+    } else if (dialogMode === 'edit' && active) {
+      await wordSetsApi.update(active.Id!, { title: titleVal, description: descVal });
+      await fetchWordSets(1, data.PageSize);
+    } else if (dialogMode === 'delete') {
+      for (const it of toDelete) {
+        if (it.Id) await wordSetsApi.delete(it.Id);
+      }
+      await fetchWordSets(1, data.PageSize);
+    }
+    setDialogOpen(false);
+  };
+
   useEffect(() => {
     fetchWordSets();
   }, []);
@@ -84,23 +114,6 @@ const WordSetsTable: React.FC<{ onRowClick?: (wordSet: WordSetDto) => void }> = 
   return (
     <div>
       <h2>Word Sets</h2>
-      <div style={{ marginBottom: '1rem' }}>
-        <button
-          onClick={() => {
-            fetchWordSets(1, data.PageSize, [], []);
-          }}
-          style={{
-            padding: '0.5rem 1rem',
-            background: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          Clear Filters & Sort
-        </button>
-      </div>
       <Table
         data={data}
         columns={columns}
@@ -111,7 +124,27 @@ const WordSetsTable: React.FC<{ onRowClick?: (wordSet: WordSetDto) => void }> = 
         onSortChange={handleSortChange}
         onSearchChange={handleSearchChange}
         onRowClick={onRowClick}
+  selectable={true}
+        buttons={[
+          { key: 'clear', label: 'Clear Filters & Sort', onClick: () => fetchWordSets(1, data.PageSize, [], []), variant: 'primary' },
+          { key: 'new', label: 'New Word Set', onClick: () => openCreate(), variant: 'primary' },
+          { key: 'edit', label: 'Edit', onClick: (sel) => sel.length === 1 && openEdit(sel[0]), variant: 'secondary', disabled: (sel) => sel.length !== 1 },
+          { key: 'delete', label: 'Delete', onClick: (sel) => sel.length > 0 && openDelete(sel), variant: 'danger', disabled: (sel) => sel.length === 0 },
+        ]}
       />
+      
+      <CommonDialog open={dialogOpen} title={dialogMode === 'create' ? 'Create Word Set' : dialogMode === 'edit' ? 'Edit Word Set' : 'Delete Word Set'} onClose={() => setDialogOpen(false)} onConfirm={handleConfirm} confirmText={dialogMode === 'delete' ? 'Delete' : 'Save'}>
+        {dialogMode === 'delete' ? (
+          <div>Are you sure you want to delete <strong>{active?.Title}</strong>?</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <label>Title</label>
+            <Input value={titleVal} onChange={(e) => setTitleVal(e.target.value)} />
+            <label>Description</label>
+            <Input value={descVal} onChange={(e) => setDescVal(e.target.value)} />
+          </div>
+        )}
+      </CommonDialog>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { PagedRequest, PagedResponse, WordDto, WordSetDto, LoginRequest, RegisterRequest, AuthResponse } from './types';
 
-const API_BASE_URL = 'http://localhost:5000/api'; // Adjust if needed
+const API_BASE_URL = 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -73,6 +73,16 @@ export const wordSetsApi = {
   getWords: async (id: string, request: PagedRequest): Promise<PagedResponse<WordDto>> => {
     const response = await api.post(`/wordsets/${id}/words/query`, request);
     return response.data as PagedResponse<WordDto>;
+  },
+
+  createAndReturn: async (data: { title: string; description?: string }): Promise<WordSetDto> => {
+    const response = await api.post('/wordsets', data);
+    return response.data as WordSetDto;
+  },
+  
+  updateAndReturn: async (id: string, data: { title: string; description?: string }): Promise<WordSetDto> => {
+    const response = await api.put(`/wordsets/${id}`, data);
+    return response.data as WordSetDto;
   },
 };
 

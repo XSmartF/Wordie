@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Table from './Table';
+import { CommonDialog, Input } from './components';
 import { wordsApi } from './api';
 import type { WordDto, PagedRequest, PagedResponse, FilterRule, SortRule, SearchRule, SortDirection } from './types';
 
@@ -73,6 +74,38 @@ const WordsTable: React.FC = () => {
     fetchWords();
   }, []);
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'create'|'edit'|'delete'>('create');
+  const [active, setActive] = useState<WordDto | null>(null);
+  const [term, setTerm] = useState('');
+  const [definition, setDefinition] = useState('');
+  const [level, setLevel] = useState<number | undefined>(undefined);
+  // selection handled by Table buttons; no local selectedItems needed
+  const [toDelete, setToDelete] = useState<WordDto[]>([]);
+
+  const openCreate = () => { setDialogMode('create'); setActive(null); setTerm(''); setDefinition(''); setLevel(undefined); setDialogOpen(true); };
+  const openEdit = (w: WordDto) => { setDialogMode('edit'); setActive(w); setTerm(w.Term || ''); setDefinition(w.Definition || ''); setLevel(w.Level); setDialogOpen(true); };
+  const openDelete = (items: WordDto[]) => { setDialogMode('delete'); setToDelete(items); setActive(items.length > 0 ? items[0] : null); setDialogOpen(true); };
+
+  const handleConfirm = async () => {
+    try {
+      if (dialogMode === 'create') {
+        await wordsApi.create({ term, definition, level: level ?? 0, wordSetId: active?.WordSetId });
+      } else if (dialogMode === 'edit' && active) {
+        await wordsApi.update(active.Id!, { term, definition, level: level ?? 0, wordSetId: active.WordSetId });
+      } else if (dialogMode === 'delete') {
+        for (const it of toDelete) {
+          if (it.Id) await wordsApi.delete(it.Id);
+        }
+      }
+      await fetchWords(1, data.PageSize);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDialogOpen(false);
+    }
+  };
+
   const handlePageChange = (page: number) => {
     fetchWords(page, data.PageSize);
   };
@@ -96,23 +129,6 @@ const WordsTable: React.FC = () => {
   return (
     <div>
       <h2>Words</h2>
-      <div style={{ marginBottom: '1rem' }}>
-        <button
-          onClick={() => {
-            fetchWords(1, data.PageSize, [], []);
-          }}
-          style={{
-            padding: '0.5rem 1rem',
-            background: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          Clear Filters & Sort
-        </button>
-      </div>
       <Table
         data={data}
         columns={columns}
@@ -122,7 +138,29 @@ const WordsTable: React.FC = () => {
         onFiltersChange={handleFiltersChange}
         onSortChange={handleSortChange}
         onSearchChange={handleSearchChange}
+        selectable={true}
+        buttons={[
+          { key: 'clear', label: 'Clear Filters & Sort', onClick: () => fetchWords(1, data.PageSize, [], []), variant: 'primary' },
+          { key: 'new', label: 'New Word', onClick: () => openCreate(), variant: 'primary' },
+          { key: 'edit', label: 'Edit', onClick: (sel) => sel.length === 1 && openEdit(sel[0]), variant: 'secondary', disabled: (sel) => sel.length !== 1 },
+          { key: 'delete', label: 'Delete', onClick: (sel) => sel.length > 0 && openDelete(sel), variant: 'danger', disabled: (sel) => sel.length === 0 },
+        ]}
       />
+
+      <CommonDialog open={dialogOpen} title={dialogMode === 'create' ? 'Create Word' : dialogMode === 'edit' ? 'Edit Word' : 'Delete Word'} onClose={() => setDialogOpen(false)} onConfirm={handleConfirm} confirmText={dialogMode === 'delete' ? 'Delete' : 'Save'}>
+        {dialogMode === 'delete' ? (
+          <div>Are you sure you want to delete <strong>{active?.Term}</strong>?</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <label>Term</label>
+            <Input value={term} onChange={(e) => setTerm(e.target.value)} />
+            <label>Definition</label>
+            <Input value={definition} onChange={(e) => setDefinition(e.target.value)} />
+            <label>Level</label>
+            <Input value={level?.toString() || ''} onChange={(e) => setLevel(Number(e.target.value))} />
+          </div>
+        )}
+      </CommonDialog>
     </div>
   );
 };
