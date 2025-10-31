@@ -32,7 +32,7 @@ public class WordsController : ControllerBase
         if (userId == null) return Unauthorized();
 
         request.Filters ??= new List<FilterRule>();
-        request.Filters.Add(new FilterRule { Field = "UserId", Operator = Wordie.Application.Common.Models.FilterOperator.Equal, Value = userId });
+        request.Filters.Add(new FilterRule { Field = "UserId", Operator = FilterOperator.Equal, Value = userId });
 
         // Use the generic handler pattern directly here for brevity
         var spec = new Application.Common.Specifications.PagedSpecification<Word>(request);

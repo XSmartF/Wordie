@@ -84,25 +84,37 @@ db.WordSets.RemoveRange(db.WordSets);
 await db.SaveChangesAsync();
 Console.WriteLine("Cleared existing WordSets and Words.");
 
-// Create 3 regular users
-var userFaker = new Faker<ApplicationUser>()
-    .RuleFor(u => u.Id, f => Guid.NewGuid().ToString())
-    .RuleFor(u => u.UserName, f => f.Internet.Email())
-    .RuleFor(u => u.Email, f => f.Internet.Email())
-    .RuleFor(u => u.DisplayName, f => f.Name.FullName());
+// Create 3 regular users (only if they don't exist)
+string[] userEmails = { "Elena53@gmail.com", "JohnDoe@gmail.com", "JaneSmith@gmail.com" };
+var users = new List<ApplicationUser>();
 
-var users = userFaker.Generate(3);
-foreach (var user in users)
+foreach (var email in userEmails)
 {
-    var create = await userManager.CreateAsync(user, "P@ssw0rd!");
-    if (create.Succeeded)
+    var existingUser = await userManager.FindByEmailAsync(email);
+    if (existingUser == null)
     {
-        await userManager.AddToRoleAsync(user, "User");
-        Console.WriteLine($"Created user: {user.Email}");
+        var user = new ApplicationUser 
+        { 
+            UserName = email, 
+            Email = email, 
+            DisplayName = email.Split('@')[0] 
+        };
+        var create = await userManager.CreateAsync(user, "P@ssw0rd!");
+        if (create.Succeeded)
+        {
+            await userManager.AddToRoleAsync(user, "User");
+            users.Add(user);
+            Console.WriteLine($"Created user: {user.Email}");
+        }
+        else
+        {
+            Console.WriteLine($"Failed to create user {email}: {string.Join(',', create.Errors.Select(e => e.Description))}");
+        }
     }
     else
     {
-        Console.WriteLine($"Failed to create user {user.Email}: {string.Join(',', create.Errors.Select(e => e.Description))}");
+        users.Add(existingUser);
+        Console.WriteLine($"User already exists: {email}");
     }
 }
 
@@ -117,8 +129,8 @@ foreach (var user in users)
         .RuleFor(s => s.CreatedAt, f => f.Date.PastOffset(2).UtcDateTime)
         .RuleFor(s => s.UserId, () => user.Id);
 
-    // Generate 5-10 sets per user
-    var numSets = rand.Next(5, 11);
+    // Generate 35 sets per user
+    var numSets = 35;
     var sets = setFaker.Generate(numSets);
     await db.WordSets.AddRangeAsync(sets);
 
@@ -135,18 +147,13 @@ foreach (var user in users)
         .RuleFor(w => w.UserId, () => user.Id)
         .RuleFor(w => w.CreatedAt, f => f.Date.RecentOffset(365).UtcDateTime);
 
-    // Generate 50-100 words per set
-    var totalWords = 0;
-    foreach (var set in sets)
-    {
-        var numWords = rand.Next(50, 101);
-        var words = wordFaker.Generate(numWords);
-        await db.Words.AddRangeAsync(words);
-        totalWords += numWords;
-    }
+    // Generate 1000 words per user, distributed randomly among the sets
+    var numWords = 1000;
+    var words = wordFaker.Generate(numWords);
+    await db.Words.AddRangeAsync(words);
 
     await db.SaveChangesAsync();
-    Console.WriteLine($"Seeded {sets.Count} WordSets and {totalWords} Words for user {user.Email}.");
+    Console.WriteLine($"Seeded {sets.Count} WordSets and {numWords} Words for user {user.Email}.");
 }
 
 Console.WriteLine("Done.");

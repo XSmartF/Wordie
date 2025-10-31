@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using AutoMapper;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -30,8 +32,24 @@ builder.Services.AddIdentityServices(configuration);
 builder.Services.AddAuthorizationPolicies();
 builder.Services.AddMediatR(typeof(GetPagedQueryHandler<Word, object>).Assembly);
 builder.Services.AddAutoMapper(typeof(AutoMapperProfile));
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.PropertyNamingPolicy = null; // PascalCase
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 builder.Services.AddEndpointsApiExplorer();
+
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin()
+               .AllowAnyMethod()
+               .AllowAnyHeader();
+    });
+});
+
 builder.Services.AddSwaggerGen(c =>
 {
     // Add JWT bearer auth to Swagger UI
@@ -72,21 +90,25 @@ app.UseSwaggerUI(options =>
 });
 
 // Open browser automatically when the app has started (development friendly)
-app.Lifetime.ApplicationStarted.Register(() =>
-{
-    try
-    {
-        // prefer first configured URL, fallback to common localhost ports
-        var url = app.Urls.FirstOrDefault() ?? builder.Configuration["ASPNETCORE_URLS"] ?? "https://localhost:5001";
-        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
-    }
-    catch
-    {
-        // ignore any errors when trying to launch browser
-    }
-});
+// app.Lifetime.ApplicationStarted.Register(() =>
+// {
+//     try
+//     {
+//         // prefer first configured URL, fallback to common localhost ports
+//         var url = app.Urls.FirstOrDefault() ?? builder.Configuration["ASPNETCORE_URLS"] ?? "https://localhost:5001";
+//         Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+//     }
+//     catch
+//     {
+//         // ignore any errors when trying to launch browser
+//     }
+// });
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
+
+// Enable CORS
+app.UseCors("AllowAll");
+
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -2,6 +2,7 @@ using Ardalis.Specification;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json;
+using System.Collections.Generic;
 using Wordie.Application.Common.Models;
 
 namespace Wordie.Application.Common.Specifications;
@@ -26,7 +27,19 @@ public class PagedSpecification<TEntity> : Specification<TEntity> where TEntity 
 
     private void ApplySorting(PagedRequest request)
     {
-        if (request.Sorts == null || !request.Sorts.Any()) return;
+        if (request.Sorts == null || !request.Sorts.Any())
+        {
+            // Default sort by Id ascending if no sorts provided
+            var idProp = typeof(TEntity).GetProperty("Id", BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            if (idProp != null)
+            {
+                var param = Expression.Parameter(typeof(TEntity), "x");
+                var body = Expression.Property(param, idProp);
+                var keySelector = Expression.Lambda<Func<TEntity, object?>>(Expression.Convert(body, typeof(object)), param);
+                Query.OrderBy(keySelector);
+            }
+            return;
+        }
 
         IOrderedSpecificationBuilder<TEntity>? ordered = null;
         foreach (var sort in request.Sorts)
@@ -81,6 +94,46 @@ public class PagedSpecification<TEntity> : Specification<TEntity> where TEntity 
         if (filter.Value == null) return null;
 
         var propertyType = ((PropertyInfo)member.Member).PropertyType;
+
+        // Handle Between operator specially for range values
+        if (filter.Operator == FilterOperator.Between)
+        {
+            Dictionary<string, object>? range = null;
+
+            if (filter.Value is JsonElement json && json.ValueKind == JsonValueKind.Object)
+            {
+                range = json.Deserialize<Dictionary<string, object>>();
+            }
+            else if (filter.Value is Dictionary<string, object> dict)
+            {
+                range = dict;
+            }
+
+            if (range == null || (!range.ContainsKey("min") && !range.ContainsKey("max")))
+                return null;
+
+            Expression? combined = null;
+
+            if (range.TryGetValue("min", out var minValue) && minValue != null)
+            {
+                var minConstant = Expression.Constant(ConvertValue(minValue, propertyType));
+                var greaterThanOrEqual = Expression.GreaterThanOrEqual(member, minConstant);
+                combined = greaterThanOrEqual;
+            }
+
+            if (range.TryGetValue("max", out var maxValue) && maxValue != null)
+            {
+                var maxConstant = Expression.Constant(ConvertValue(maxValue, propertyType));
+                var lessThanOrEqual = Expression.LessThanOrEqual(member, maxConstant);
+                if (combined == null)
+                    combined = lessThanOrEqual;
+                else
+                    combined = Expression.AndAlso(combined, lessThanOrEqual);
+            }
+
+            return combined;
+        }
+
         var constant = Expression.Constant(ConvertValue(filter.Value, propertyType));
 
         return filter.Operator switch
@@ -107,7 +160,16 @@ public class PagedSpecification<TEntity> : Specification<TEntity> where TEntity 
                 return DateTime.Parse(json.GetString()!);
             if (json.ValueKind == JsonValueKind.Number && targetType == typeof(int))
                 return json.GetInt32();
+            if (json.ValueKind == JsonValueKind.String && targetType == typeof(Guid))
+                return Guid.Parse(json.GetString()!);
+            if (json.ValueKind == JsonValueKind.String && Nullable.GetUnderlyingType(targetType) == typeof(Guid))
+                return Guid.Parse(json.GetString()!);
         }
+
+        if (targetType == typeof(Guid) && value is string str)
+            return Guid.Parse(str);
+        if (Nullable.GetUnderlyingType(targetType) == typeof(Guid) && value is string str2)
+            return Guid.Parse(str2);
 
         if (targetType.IsEnum)
             return Enum.Parse(targetType, value.ToString()!);
