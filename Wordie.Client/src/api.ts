@@ -75,11 +75,17 @@ export const wordSetsApi = {
     return response.data as PagedResponse<WordDto>;
   },
 
+  // Create a word inside a specific wordset
+  createWord: async (id: string, data: { term: string; definition: string; level: number }): Promise<WordDto> => {
+    const response = await api.post(`/wordsets/${id}/words`, data);
+    return response.data as WordDto;
+  },
+
   createAndReturn: async (data: { title: string; description?: string }): Promise<WordSetDto> => {
     const response = await api.post('/wordsets', data);
     return response.data as WordSetDto;
   },
-  
+
   updateAndReturn: async (id: string, data: { title: string; description?: string }): Promise<WordSetDto> => {
     const response = await api.put(`/wordsets/${id}`, data);
     return response.data as WordSetDto;

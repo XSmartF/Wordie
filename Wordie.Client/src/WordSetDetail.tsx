@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Table from './Table';
-import { wordsApi } from './api';
+import { wordSetsApi, wordsApi } from './api';
+import { CommonDialog, Input } from './components';
 import type { WordDto, PagedRequest, PagedResponse, FilterRule, SortRule, SearchRule, SortDirection } from './types';
 
 interface WordSetDetailProps {
@@ -20,6 +21,13 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
     HasPrevious: false,
   });
   const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'create'|'edit'|'delete'>('create');
+  const [active, setActive] = useState<WordDto | null>(null);
+  const [term, setTerm] = useState('');
+  const [definition, setDefinition] = useState('');
+  const [level, setLevel] = useState<number | undefined>(undefined);
+  const [toDelete, setToDelete] = useState<WordDto[]>([]);
 
   const columns = [
     {
@@ -75,7 +83,7 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
         Sorts: sorts.length > 0 ? sorts.map(s => ({ Field: s.Field, Direction: s.Direction } as SortRule)) : undefined,
         Search: search,
       };
-      const response = await wordsApi.query(request);
+  const response = await wordSetsApi.getWords(wordSetId, request);
       setData(response);
     } catch (error) {
       console.error('Error fetching words for wordset:', error);
@@ -87,6 +95,30 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
   useEffect(() => {
     fetchWords();
   }, [wordSetId, fetchWords]);
+
+  const openCreate = () => { setDialogMode('create'); setActive(null); setTerm(''); setDefinition(''); setLevel(undefined); setDialogOpen(true); };
+  const openEdit = (items: WordDto[]) => { setDialogMode('edit'); const w = items.length > 0 ? items[0] : null; setActive(w); setTerm(w?.Term || ''); setDefinition(w?.Definition || ''); setLevel(w?.Level); setDialogOpen(true); };
+  const openDelete = (items: WordDto[]) => { setDialogMode('delete'); setToDelete(items); setActive(items.length > 0 ? items[0] : null); setDialogOpen(true); };
+
+  const handleConfirm = async () => {
+    try {
+      if (dialogMode === 'create') {
+        await wordSetsApi.createWord(wordSetId, { term, definition, level: level ?? 0 });
+      } else if (dialogMode === 'edit' && active) {
+        // update via wordsApi
+        if (active.Id) await wordsApi.update(active.Id, { term, definition, level: level ?? 0, wordSetId });
+      } else if (dialogMode === 'delete') {
+        for (const it of toDelete) {
+          if (it.Id) await wordsApi.delete(it.Id);
+        }
+      }
+      await fetchWords(1, data.PageSize);
+    } catch (err) {
+      console.error('Error handling word dialog action:', err);
+    } finally {
+      setDialogOpen(false);
+    }
+  };
 
   const handlePageChange = (page: number) => {
     fetchWords(page, data.PageSize);
@@ -110,7 +142,7 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
 
   return (
     <div>
-      <div style={{ marginBottom: '1rem' }}>
+  <div style={{ marginBottom: '1rem' }}>
         <button
           onClick={onBack}
           style={{
@@ -125,6 +157,7 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
         >
           ← Back to Word Sets
         </button>
+        {/* New/Edit/Delete actions are exposed via the Table toolbar buttons as well */}
         <h2>Words in "{wordSetTitle}"</h2>
       </div>
       <Table
@@ -136,7 +169,24 @@ const WordSetDetail: React.FC<WordSetDetailProps> = ({ wordSetId, wordSetTitle, 
         onFiltersChange={handleFiltersChange}
         onSortChange={handleSortChange}
         onSearchChange={handleSearchChange}
+        selectable={true}
+        buttons={[
+          { key: 'clear', label: 'Clear Filters & Sort', onClick: () => fetchWords(1, data.PageSize, [], []), variant: 'primary' },
+          { key: 'new', label: 'New Word', onClick: () => openCreate(), variant: 'primary' },
+          { key: 'edit', label: 'Edit', onClick: (sel) => sel.length === 1 && openEdit(sel), variant: 'secondary', disabled: (sel) => sel.length !== 1 },
+          { key: 'delete', label: 'Delete', onClick: (sel) => sel.length > 0 && openDelete(sel), variant: 'danger', disabled: (sel) => sel.length === 0 },
+        ]}
       />
+      <CommonDialog open={dialogOpen} title={`Create word in "${wordSetTitle}"`} onClose={() => setDialogOpen(false)} onConfirm={handleConfirm} confirmText="Create">
+        <div style={{ display: 'grid', gap: 8 }}>
+          <label>Term</label>
+          <Input value={term} onChange={(e) => setTerm(e.target.value)} />
+          <label>Definition</label>
+          <Input value={definition} onChange={(e) => setDefinition(e.target.value)} />
+          <label>Level</label>
+          <Input value={level?.toString() || ''} onChange={(e) => setLevel(Number(e.target.value))} />
+        </div>
+      </CommonDialog>
     </div>
   );
 };

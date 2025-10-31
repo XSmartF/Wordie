@@ -143,4 +143,24 @@ public class WordSetsController : ControllerBase
         var mapped = _mapper.Map<IReadOnlyList<WordDto>>(items);
         return Ok(new PagedResponse<WordDto>(mapped, total, request.Page, request.PageSize));
     }
+
+    // Create a new word inside a specific wordset
+    [HttpPost("{id}/words")]
+    [Authorize]
+    public async Task<ActionResult<WordDto>> CreateWord(Guid id, CreateWordRequest req)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        // Ensure the target wordset exists and belongs to the user
+        var wordSet = await _db.WordSets.FirstOrDefaultAsync(ws => ws.Id == id && ws.UserId == userId);
+        if (wordSet == null) return BadRequest("WordSet not found or not owned by user");
+
+        var word = new Word { Term = req.Term, Definition = req.Definition, Level = req.Level, WordSetId = id, UserId = userId };
+        _db.Words.Add(word);
+        await _db.SaveChangesAsync();
+
+        // Return Created response pointing to WordsController.Get
+        return CreatedAtAction(nameof(Wordie.Api.Controllers.WordsController.Get), "Words", new { id = word.Id }, _mapper.Map<WordDto>(word));
+    }
 }
