@@ -13,6 +13,8 @@ public class WordSet
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    public bool IsFavorite { get; set; }
+
     public string? UserId { get; set; }
     public ApplicationUser? User { get; set; }
 

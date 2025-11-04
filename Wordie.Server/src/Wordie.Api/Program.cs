@@ -14,6 +14,7 @@ using Wordie.Domain.Entities;
 using Wordie.Infrastructure.Persistence;
 using Wordie.Api.Mapping;
 using Wordie.Api.Extensions;
+using Wordie.Api.Services;
 using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -77,6 +78,12 @@ builder.Services.AddSwaggerGen(c =>
             Array.Empty<string>()
         }
     });
+});
+
+builder.Services.AddHttpClient<IGeminiWordGenerator, GeminiWordGenerator>(client =>
+{
+    client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+    client.Timeout = TimeSpan.FromSeconds(30);
 });
 
 var app = builder.Build();

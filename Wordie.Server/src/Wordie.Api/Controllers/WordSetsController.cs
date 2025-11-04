@@ -7,6 +7,7 @@ using Wordie.Application.Common.Handlers;
 using Wordie.Domain.Entities;
 using Wordie.Infrastructure.Persistence;
 using Wordie.Api.DTOs;
+using Wordie.Api.Services;
 
 namespace Wordie.Api.Controllers;
 
@@ -17,12 +18,14 @@ public class WordSetsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IMapper _mapper;
     private readonly ILogger<WordSetsController> _logger;
+    private readonly IGeminiWordGenerator _geminiWordGenerator;
 
-    public WordSetsController(ApplicationDbContext db, IMapper mapper, ILogger<WordSetsController> logger)
+    public WordSetsController(ApplicationDbContext db, IMapper mapper, ILogger<WordSetsController> logger, IGeminiWordGenerator geminiWordGenerator)
     {
         _db = db;
         _mapper = mapper;
         _logger = logger;
+        _geminiWordGenerator = geminiWordGenerator;
     }
 
     [HttpGet]
@@ -32,8 +35,27 @@ public class WordSetsController : ControllerBase
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var sets = await _db.WordSets.Where(ws => ws.UserId == userId).ToListAsync();
+        var sets = await _db.WordSets
+            .Where(ws => ws.UserId == userId)
+            .OrderByDescending(ws => ws.IsFavorite)
+            .ThenBy(ws => ws.Title)
+            .ToListAsync();
         return Ok(_mapper.Map<IEnumerable<WordSetDto>>(sets));
+    }
+
+    [HttpGet("favorites")]
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<WordSetDto>>> GetFavorites()
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var favorites = await _db.WordSets
+            .Where(ws => ws.UserId == userId && ws.IsFavorite)
+            .OrderBy(ws => ws.Title)
+            .ToListAsync();
+
+        return Ok(_mapper.Map<IEnumerable<WordSetDto>>(favorites));
     }
 
     // Accept complex PagedRequest in the body via POST for rich filtering/sorting
@@ -86,7 +108,13 @@ public class WordSetsController : ControllerBase
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var set = new WordSet { Title = req.Title, Description = req.Description, UserId = userId };
+        var set = new WordSet
+        {
+            Title = req.Title,
+            Description = req.Description,
+            UserId = userId,
+            IsFavorite = req.IsFavorite
+        };
         _db.WordSets.Add(set);
         await _db.SaveChangesAsync();
         return CreatedAtAction(nameof(Get), new { id = set.Id }, _mapper.Map<WordSetDto>(set));
@@ -103,8 +131,25 @@ public class WordSetsController : ControllerBase
         if (set == null) return NotFound();
         set.Title = req.Title;
         set.Description = req.Description;
+        set.IsFavorite = req.IsFavorite;
         await _db.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpPatch("{id}/favorite")]
+    [Authorize]
+    public async Task<ActionResult<WordSetDto>> UpdateFavorite(Guid id, UpdateWordSetFavoriteRequest req)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var set = await _db.WordSets.FirstOrDefaultAsync(ws => ws.Id == id && ws.UserId == userId);
+        if (set == null) return NotFound();
+
+        set.IsFavorite = req.IsFavorite;
+        await _db.SaveChangesAsync();
+
+        return Ok(_mapper.Map<WordSetDto>(set));
     }
 
     [HttpDelete("{id}")]
@@ -162,5 +207,94 @@ public class WordSetsController : ControllerBase
 
         // Return Created response pointing to WordsController.Get
         return CreatedAtAction(nameof(Wordie.Api.Controllers.WordsController.Get), "Words", new { id = word.Id }, _mapper.Map<WordDto>(word));
+    }
+
+    [HttpPost("{id}/words/bulk")]
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<WordDto>>> CreateWordsBulk(Guid id, BulkCreateWordsRequest request, CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var wordSet = await _db.WordSets.FirstOrDefaultAsync(ws => ws.Id == id && ws.UserId == userId, cancellationToken);
+        if (wordSet == null) return BadRequest("WordSet not found or not owned by user");
+
+        if (request.Words is not { Count: > 0 })
+        {
+            return BadRequest("No words provided");
+        }
+
+        var sanitized = request.Words
+            .Select(word => new
+            {
+                Term = (word.Term ?? string.Empty).Trim(),
+                Definition = (word.Definition ?? string.Empty).Trim(),
+                Level = word.Level
+            })
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Term) && !string.IsNullOrWhiteSpace(entry.Definition))
+            .Select(entry => new Word
+            {
+                Term = entry.Term,
+                Definition = entry.Definition,
+                Level = Math.Clamp(entry.Level <= 0 ? 1 : entry.Level, 1, 10),
+                WordSetId = id,
+                UserId = userId
+            })
+            .ToList();
+
+        if (sanitized.Count == 0)
+        {
+            return BadRequest("Không có từ hợp lệ để thêm.");
+        }
+
+        await _db.Words.AddRangeAsync(sanitized, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var mapped = _mapper.Map<IEnumerable<WordDto>>(sanitized);
+        return Ok(mapped);
+    }
+
+    [HttpPost("{id}/words/gemini")]
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<WordDto>>> CreateWordsWithGemini(Guid id, GenerateWordsWithGeminiRequest request, CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var wordSet = await _db.WordSets.FirstOrDefaultAsync(ws => ws.Id == id && ws.UserId == userId, cancellationToken);
+        if (wordSet == null) return BadRequest("WordSet not found or not owned by user");
+
+        if (string.IsNullOrWhiteSpace(request.Prompt))
+        {
+            return BadRequest("Prompt is required");
+        }
+
+        var generated = await _geminiWordGenerator.GenerateWordsAsync(request.Prompt, request.DefaultLevel, request.MaxWords, cancellationToken);
+        if (generated.Count == 0)
+        {
+            return Ok(Array.Empty<WordDto>());
+        }
+
+        var words = generated
+            .Select(word => new Word
+            {
+                Term = word.Term.Trim(),
+                Definition = word.Definition.Trim(),
+                Level = Math.Clamp(word.Level <= 0 ? request.DefaultLevel ?? 1 : word.Level, 1, 10),
+                WordSetId = id,
+                UserId = userId
+            })
+            .ToList();
+
+        if (words.Count == 0)
+        {
+            return Ok(Array.Empty<WordDto>());
+        }
+
+        await _db.Words.AddRangeAsync(words, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var mapped = _mapper.Map<IEnumerable<WordDto>>(words);
+        return Ok(mapped);
     }
 }

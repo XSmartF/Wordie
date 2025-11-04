@@ -31,6 +31,8 @@ export interface ComboBoxProps {
   onChange: (value: string) => void
   placeholder?: string
   className?: string
+  disabled?: boolean
+  emptyMessage?: string
 }
 
 export function ComboBox({
@@ -39,6 +41,8 @@ export function ComboBox({
   onChange,
   placeholder = "Select...",
   className,
+  disabled = false,
+  emptyMessage = "No results.",
 }: ComboBoxProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -53,18 +57,27 @@ export function ComboBox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn("w-[200px] justify-between", className)}
+          className={cn(
+            "w-full justify-between",
+            selectedLabel ? "text-foreground" : "text-muted-foreground",
+            className
+          )}
+          disabled={disabled}
         >
           {selectedLabel || placeholder}
           <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[200px] p-0">
+      <PopoverContent
+        align="start"
+        className="p-0"
+        style={{ width: "var(--radix-popover-trigger-width)", minWidth: 200 }}
+      >
         <Command>
           <CommandInput placeholder="Search..." />
           <CommandList>
-            <CommandEmpty>No results.</CommandEmpty>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {items.map((it) => (
                 <CommandItem

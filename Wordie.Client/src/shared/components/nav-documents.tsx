@@ -22,8 +22,8 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from "@/shared/components/ui/sidebar"
+import { useSidebar } from "@/shared/components/ui/sidebar-context"
 
 export function NavDocuments({
   items,

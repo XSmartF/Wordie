@@ -9,7 +9,8 @@ public enum FilterType
     Date,
     Enum,
     MultiSelect,
-    Range
+    Range,
+    DateRange
 }
 
 public enum FilterOperator

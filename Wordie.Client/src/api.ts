@@ -1,5 +1,16 @@
 import axios from 'axios';
-import type { PagedRequest, PagedResponse, WordDto, WordSetDto, LoginRequest, RegisterRequest, AuthResponse } from './types';
+import type {
+  PagedRequest,
+  PagedResponse,
+  WordDto,
+  WordSetDto,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  DashboardSummaryResponse,
+  DashboardTrendPointResponse,
+  DashboardWordSetSummaryResponse,
+} from './types';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -70,6 +81,16 @@ export const wordSetsApi = {
     await api.delete(`/wordsets/${id}`);
   },
 
+  getFavorites: async (): Promise<WordSetDto[]> => {
+    const response = await api.get(`/wordsets/favorites`);
+    return response.data as WordSetDto[];
+  },
+
+  updateFavorite: async (id: string, isFavorite: boolean): Promise<WordSetDto> => {
+    const response = await api.patch(`/wordsets/${id}/favorite`, { IsFavorite: isFavorite });
+    return response.data as WordSetDto;
+  },
+
   getWords: async (id: string, request: PagedRequest): Promise<PagedResponse<WordDto>> => {
     const response = await api.post(`/wordsets/${id}/words/query`, request);
     return response.data as PagedResponse<WordDto>;
@@ -100,5 +121,22 @@ export const authApi = {
 
   register: async (userData: RegisterRequest): Promise<void> => {
     await api.post('/auth/register', userData);
+  },
+};
+
+export const dashboardApi = {
+  summary: async (): Promise<DashboardSummaryResponse> => {
+    const response = await api.get('/dashboard/summary');
+    return response.data as DashboardSummaryResponse;
+  },
+
+  trends: async (params?: { days?: number }): Promise<DashboardTrendPointResponse[]> => {
+    const response = await api.get('/dashboard/trends', { params });
+    return response.data as DashboardTrendPointResponse[];
+  },
+
+  topWordSets: async (params?: { take?: number }): Promise<DashboardWordSetSummaryResponse[]> => {
+    const response = await api.get('/dashboard/top-wordsets', { params });
+    return response.data as DashboardWordSetSummaryResponse[];
   },
 };

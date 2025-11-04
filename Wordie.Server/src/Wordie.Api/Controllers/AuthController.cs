@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
@@ -40,6 +41,25 @@ public class AuthController : ControllerBase
 
         var token = await GenerateTokenAsync(user);
         return Ok(new { token });
+    }
+
+    [HttpGet("me")]
+    [Authorize]
+    public async Task<ActionResult> Me()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null) return Unauthorized();
+
+        return Ok(new
+        {
+            id = user.Id,
+            userName = user.UserName ?? string.Empty,
+            email = user.Email ?? string.Empty,
+            displayName = user.DisplayName
+        });
     }
 
     private async Task<string> GenerateTokenAsync(ApplicationUser user)
