@@ -50,6 +50,7 @@ import { toast } from "sonner"
 import { useIsMobile } from "@/shared/hooks/use-mobile"
 import { Badge } from "@/shared/components/ui/badge"
 import { Button } from "@/shared/components/ui/button"
+import { SplitButton } from "@/shared/components/ui/split-button"
 import {
   type ChartConfig,
   ChartContainer,
@@ -187,6 +188,7 @@ interface DataTableProps<T extends TableRowBase> {
   // Actions
   onRowClick?: (item: T) => void
   buttons?: TableButton<T>[]
+  groupToolbarButtons?: boolean
   // Customization
   enableTabs?: boolean
   enableDragAndDrop?: boolean
@@ -1102,6 +1104,7 @@ export function DataTable<T extends TableRowBase>({
   onSelectionChange,
   onRowClick,
   buttons,
+  groupToolbarButtons = true,
   enableTabs = true,
   enableDragAndDrop = true,
   searchableColumns = [],
@@ -1392,25 +1395,90 @@ export function DataTable<T extends TableRowBase>({
       {/* Toolbar với search, filters và buttons */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {buttons && buttons.map((button) => {
-            let mappedVariant: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link' = 'outline'
-            if (button.variant === 'danger') mappedVariant = 'destructive'
-            else if (button.variant === 'primary') mappedVariant = 'default'
-            else if (button.variant === 'secondary') mappedVariant = 'secondary'
-            else if (button.variant === 'ghost') mappedVariant = 'ghost'
+          {(() => {
+            if (!buttons?.length) {
+              return null
+            }
+
+            const mapVariant = (
+              variant?: TableButton<T>["variant"],
+            ): 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link' => {
+              if (variant === 'danger') return 'destructive'
+              if (variant === 'primary') return 'default'
+              if (variant === 'secondary') return 'secondary'
+              if (variant === 'ghost') return 'ghost'
+              return 'outline'
+            }
+
+            if (!groupToolbarButtons) {
+              return buttons.map((button) => (
+                <Button
+                  key={button.key}
+                  variant={mapVariant(button.variant)}
+                  size="sm"
+                  onClick={() => button.onClick?.(selectedRows)}
+                  disabled={button.disabled?.(selectedRows)}
+                >
+                  {button.label}
+                </Button>
+              ))
+            }
+
+            const nonDangerButtons = buttons.filter((button) => button.variant !== 'danger')
+            const dangerButtons = buttons.filter((button) => button.variant === 'danger')
+
+            const primaryAction = nonDangerButtons[0]
+            const secondaryActions = nonDangerButtons.slice(1)
 
             return (
-              <Button
-                key={button.key}
-                variant={mappedVariant}
-                size="sm"
-                onClick={() => button.onClick?.(selectedRows)}
-                disabled={button.disabled?.(selectedRows)}
-              >
-                {button.label}
-              </Button>
+              <>
+                {primaryAction ? (
+                  secondaryActions.length > 0 ? (
+                    <SplitButton
+                      key={`split-${primaryAction.key}`}
+                      primaryAction={{
+                        label: primaryAction.label,
+                        onClick: () => primaryAction.onClick?.(selectedRows),
+                        disabled: primaryAction.disabled?.(selectedRows),
+                      }}
+                      options={secondaryActions.map((button) => ({
+                        key: button.key,
+                        label: button.label,
+                        onSelect: () => button.onClick?.(selectedRows),
+                        disabled: button.disabled?.(selectedRows),
+                        tone: button.variant === 'danger' ? 'destructive' : 'default',
+                      }))}
+                      variant={mapVariant(primaryAction.variant)}
+                      size="sm"
+                      className="shadow-none"
+                    />
+                  ) : (
+                    <Button
+                      key={primaryAction.key}
+                      variant={mapVariant(primaryAction.variant)}
+                      size="sm"
+                      onClick={() => primaryAction.onClick?.(selectedRows)}
+                      disabled={primaryAction.disabled?.(selectedRows)}
+                    >
+                      {primaryAction.label}
+                    </Button>
+                  )
+                ) : null}
+
+                {dangerButtons.map((button) => (
+                  <Button
+                    key={button.key}
+                    variant={mapVariant(button.variant)}
+                    size="sm"
+                    onClick={() => button.onClick?.(selectedRows)}
+                    disabled={button.disabled?.(selectedRows)}
+                  >
+                    {button.label}
+                  </Button>
+                ))}
+              </>
             )
-          })}
+          })()}
         </div>
         
         <div className="flex items-center gap-2">

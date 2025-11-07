@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
+import { z } from "zod";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   IconArrowRight,
   IconEdit,
+  IconPlayerPlay,
   IconPlus,
   IconStar,
   IconStarFilled,
@@ -13,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { queryKeys } from "@/core/query/keys";
 import { wordSetsApi } from "@/features/word-sets/api/word-sets-api";
 import type {
   CreateWordSetRequest,
@@ -23,35 +26,15 @@ import type {
   FilterFieldConfig,
   TableButton,
 } from "@/shared/components/data-table";
+import { ConfirmDialog } from "@/shared/components/confirm-dialog";
 import { DataTable } from "@/shared/components/data-table";
-import { Button } from "@/shared/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
-import { Checkbox } from "@/shared/components/ui/checkbox";
-import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
-import { Textarea } from "@/shared/components/ui/textarea";
+  FormBuilder,
+  type FormFieldConfig,
+} from "@/shared/components/form/form-builder";
+import { PageHeader, PageSection, PageShell } from "@/shared/components/page";
+import { Typography } from "@/shared/components/typography";
+import { ResponsiveDialog } from "@/shared/components/responsive-dialog";
 import type {
   FilterRule,
   PagedResponse,
@@ -91,6 +74,22 @@ type DeleteState = {
   wordSet: WordSetDto | null;
 };
 
+const wordSetFormSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, "Tiêu đề là bắt buộc")
+    .max(120, "Tiêu đề tối đa 120 ký tự"),
+  description: z
+    .string()
+    .trim()
+    .max(500, "Mô tả tối đa 500 ký tự")
+    .optional(),
+  isFavorite: z.boolean().default(false),
+});
+
+type WordSetFormValues = z.infer<typeof wordSetFormSchema>;
+
 const DEFAULT_DIALOG_STATE: DialogState = {
   open: false,
   mode: "create",
@@ -115,14 +114,11 @@ export const WordSetsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<WordSetsResponseState>(INITIAL_STATE);
 
-  const [dialogState, setDialogState] = useState<DialogState>(DEFAULT_DIALOG_STATE);
-  const [deleteState, setDeleteState] = useState<DeleteState>(DEFAULT_DELETE_STATE);
+  const [dialogState, setDialogState] =
+    useState<DialogState>(DEFAULT_DIALOG_STATE);
+  const [deleteState, setDeleteState] =
+    useState<DeleteState>(DEFAULT_DELETE_STATE);
 
-  const [formValues, setFormValues] = useState<{
-    title: string;
-    description: string;
-    isFavorite: boolean;
-  }>({ title: "", description: "", isFavorite: false });
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
@@ -139,7 +135,9 @@ export const WordSetsPage = () => {
         Search: searchRule,
       };
 
-      const response: PagedResponse<WordSetDto> = await wordSetsApi.query(request);
+      const response: PagedResponse<WordSetDto> = await wordSetsApi.query(
+        request
+      );
 
       setState({
         items: response.Items,
@@ -164,54 +162,62 @@ export const WordSetsPage = () => {
     async (wordSet: WordSetDto, override?: boolean) => {
       try {
         const nextFavorite = override ?? !wordSet.IsFavorite;
-        const updated = await wordSetsApi.updateFavorite(wordSet.Id, nextFavorite);
+        const updated = await wordSetsApi.updateFavorite(
+          wordSet.Id,
+          nextFavorite
+        );
 
         setState((current) => ({
           ...current,
-          items: current.items.map((item) => (item.Id === updated.Id ? updated : item)),
+          items: current.items.map((item) =>
+            item.Id === updated.Id ? updated : item
+          ),
         }));
 
-        queryClient.setQueryData<WordSetDto[] | undefined>(["wordSets", "favorites"], (previous) => {
-          if (!previous) return previous;
+        queryClient.setQueryData<WordSetDto[] | undefined>(
+          queryKeys.wordSets.favorites(),
+          (previous) => {
+            if (!previous) return previous;
 
-          if (updated.IsFavorite) {
-            const exists = previous.some((item) => item.Id === updated.Id);
-            if (exists) {
-              return previous.map((item) => (item.Id === updated.Id ? updated : item)).sort((a, b) => a.Title.localeCompare(b.Title));
+            if (updated.IsFavorite) {
+              const exists = previous.some((item) => item.Id === updated.Id);
+              if (exists) {
+                return previous
+                  .map((item) => (item.Id === updated.Id ? updated : item))
+                  .sort((a, b) => a.Title.localeCompare(b.Title));
+              }
+              return [...previous, updated].sort((a, b) =>
+                a.Title.localeCompare(b.Title)
+              );
             }
-            return [...previous, updated].sort((a, b) => a.Title.localeCompare(b.Title));
+
+            return previous.filter((item) => item.Id !== updated.Id);
           }
+        );
 
-          return previous.filter((item) => item.Id !== updated.Id);
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.wordSets.favorites(),
         });
-
-        void queryClient.invalidateQueries({ queryKey: ["wordSets", "favorites"] });
 
         toast.success(
           updated.IsFavorite
             ? `Đã thêm "${updated.Title}" vào danh sách yêu thích.`
-            : `Đã bỏ "${updated.Title}" khỏi danh sách yêu thích.`,
+            : `Đã bỏ "${updated.Title}" khỏi danh sách yêu thích.`
         );
       } catch (err) {
         console.error("Failed to update favorite", err);
         toast.error("Không thể cập nhật trạng thái yêu thích.");
       }
     },
-    [queryClient],
+    [queryClient]
   );
 
   const openCreateDialog = useCallback(() => {
     setDialogState({ open: true, mode: "create", wordSet: null });
-    setFormValues({ title: "", description: "", isFavorite: false });
   }, []);
 
   const openEditDialog = useCallback((wordSet: WordSetDto) => {
     setDialogState({ open: true, mode: "edit", wordSet });
-    setFormValues({
-      title: wordSet.Title,
-      description: wordSet.Description ?? "",
-      isFavorite: wordSet.IsFavorite,
-    });
   }, []);
 
   const closeDialog = () => {
@@ -228,8 +234,46 @@ export const WordSetsPage = () => {
     setDeleteState(DEFAULT_DELETE_STATE);
   };
 
-  const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const wordSetFormFields = useMemo<FormFieldConfig<WordSetFormValues>[]>(
+    () => [
+      {
+        name: "title",
+        label: "Tiêu đề",
+        type: "text",
+        placeholder: "Nhập tiêu đề",
+        required: true,
+        helperText: "Tên hiển thị trong danh sách word set.",
+      },
+      {
+        name: "description",
+        label: "Mô tả",
+        type: "textarea",
+        placeholder: "Mô tả ngắn gọn cho word set",
+        rows: 4,
+        helperText: "Tùy chọn; hỗ trợ bạn ghi chú nội dung bộ từ.",
+      },
+      {
+        name: "isFavorite",
+        label: "Đánh dấu là yêu thích",
+        type: "checkbox",
+        description: "Hiển thị bộ từ trong danh sách yêu thích.",
+      },
+    ],
+    []
+  );
+
+  const formDefaultValues = useMemo<WordSetFormValues>(
+    () => ({
+      title: dialogState.wordSet?.Title ?? "",
+      description: dialogState.wordSet?.Description ?? "",
+      isFavorite: dialogState.wordSet?.IsFavorite ?? false,
+    }),
+    [dialogState.wordSet]
+  );
+
+  const submitLabel = dialogState.mode === "create" ? "Tạo" : "Lưu";
+
+  const handleFormSubmit = async (values: WordSetFormValues) => {
     if (formSubmitting) return;
 
     setFormSubmitting(true);
@@ -237,25 +281,25 @@ export const WordSetsPage = () => {
     try {
       if (dialogState.mode === "create") {
         const payload: CreateWordSetRequest = {
-          title: formValues.title.trim(),
-          description: formValues.description.trim() || undefined,
-          isFavorite: formValues.isFavorite,
+          title: values.title.trim(),
+          description: values.description?.trim() || undefined,
+          isFavorite: values.isFavorite,
         };
 
         await wordSetsApi.create(payload);
         toast.success("Tạo word set mới thành công.");
       } else if (dialogState.wordSet) {
         const payload: UpdateWordSetRequest = {
-          title: formValues.title.trim(),
-          description: formValues.description.trim() || undefined,
-          isFavorite: formValues.isFavorite,
+          title: values.title.trim(),
+          description: values.description?.trim() || undefined,
+          isFavorite: values.isFavorite,
         };
 
         await wordSetsApi.update(dialogState.wordSet.Id, payload);
         toast.success("Cập nhật word set thành công.");
       }
 
-      closeDialog();
+      setDialogState(DEFAULT_DIALOG_STATE);
       await fetchWordSets();
     } catch (err) {
       console.error("Failed to save word set", err);
@@ -293,7 +337,7 @@ export const WordSetsPage = () => {
         isFavorite: item.IsFavorite,
         wordSet: item,
       })),
-    [state.items],
+    [state.items]
   );
 
   const columns = useMemo<ColumnDef<WordSetTableRow>[]>(() => {
@@ -303,15 +347,15 @@ export const WordSetsPage = () => {
         header: "Tiêu đề",
         accessorFn: (row) => row.title,
         cell: ({ row }) => (
-          <div className="flex flex-col gap-1">
-            <span className="font-medium text-foreground wrap-break-word" title={row.original.title}>
+          <div className="flex max-w-64 flex-col gap-1">
+            <Typography className="truncate font-medium text-foreground" title={row.original.title}>
               {row.original.title}
-            </span>
-            {row.original.description && (
-              <span className="text-sm text-muted-foreground wrap-break-word" title={row.original.description}>
+            </Typography>
+            {row.original.description ? (
+              <Typography variant="muted" className="truncate" title={row.original.description}>
                 {row.original.description}
-              </span>
-            )}
+              </Typography>
+            ) : null}
           </div>
         ),
       },
@@ -321,9 +365,9 @@ export const WordSetsPage = () => {
         accessorFn: (row) => row.description ?? "",
         enableSorting: false,
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground wrap-break-word">
+          <Typography variant="muted" className="max-w-64 truncate">
             {row.original.description || "—"}
-          </span>
+          </Typography>
         ),
       },
       {
@@ -331,9 +375,9 @@ export const WordSetsPage = () => {
         header: "Ngày tạo",
         accessorFn: (row) => row.createdAt,
         cell: ({ row }) => (
-          <span className="whitespace-nowrap text-sm text-muted-foreground">
+          <Typography variant="muted" className="whitespace-nowrap">
             {format(new Date(row.original.createdAt), "dd/MM/yyyy")}
-          </span>
+          </Typography>
         ),
       },
     ];
@@ -356,7 +400,7 @@ export const WordSetsPage = () => {
         type: "DateRange",
       },
     ],
-    [],
+    []
   );
 
   const searchableColumns = useMemo(() => ["Title", "Description"], []);
@@ -366,24 +410,37 @@ export const WordSetsPage = () => {
     setPage(1);
   }, []);
 
-  const handleSortChange = useCallback((nextSorts: { field: string; direction: "Asc" | "Desc" }[]) => {
-    const mapped: SortRule[] = nextSorts.map((sort) => ({ Field: sort.field, Direction: sort.direction }));
-    setSorts((current) => {
-      if (
-        current.length === mapped.length &&
-        current.every((item, index) => item.Field === mapped[index]?.Field && item.Direction === mapped[index]?.Direction)
-      ) {
-        return current;
-      }
+  const handleSortChange = useCallback(
+    (nextSorts: { field: string; direction: "Asc" | "Desc" }[]) => {
+      const mapped: SortRule[] = nextSorts.map((sort) => ({
+        Field: sort.field,
+        Direction: sort.direction,
+      }));
+      setSorts((current) => {
+        if (
+          current.length === mapped.length &&
+          current.every(
+            (item, index) =>
+              item.Field === mapped[index]?.Field &&
+              item.Direction === mapped[index]?.Direction
+          )
+        ) {
+          return current;
+        }
 
-      return mapped;
-    });
-  }, []);
+        return mapped;
+      });
+    },
+    []
+  );
 
-  const handleSearchChange = useCallback((nextSearch: SearchRule | undefined) => {
-    setSearchRule(nextSearch);
-    setPage(1);
-  }, []);
+  const handleSearchChange = useCallback(
+    (nextSearch: SearchRule | undefined) => {
+      setSearchRule(nextSearch);
+      setPage(1);
+    },
+    []
+  );
 
   const pagination = useMemo(
     () => ({
@@ -399,11 +456,23 @@ export const WordSetsPage = () => {
         setPage(1);
       },
     }),
-    [page, pageSize, state.totalPages, state.totalCount],
+    [page, pageSize, state.totalPages, state.totalCount]
   );
 
   const toolbarButtons = useMemo<TableButton<WordSetTableRow>[]>(
     () => [
+      {
+        key: "create",
+        label: (
+          <span className="inline-flex items-center gap-1.5">
+            <IconPlus className="size-4" /> Tạo mới
+          </span>
+        ),
+        variant: "primary",
+        onClick: () => {
+          openCreateDialog();
+        },
+      },
       {
         key: "favorite",
         label: (
@@ -414,12 +483,16 @@ export const WordSetsPage = () => {
         variant: "primary",
         onClick: (selected) => {
           void (async () => {
-            for (const row of selected.filter((item) => !item.wordSet.IsFavorite)) {
+            for (const row of selected.filter(
+              (item) => !item.wordSet.IsFavorite
+            )) {
               await handleToggleFavorite(row.wordSet, true);
             }
           })();
         },
-        disabled: (selected) => selected.length === 0 || selected.every((row) => row.wordSet.IsFavorite),
+        disabled: (selected) =>
+          selected.length === 0 ||
+          selected.every((row) => row.wordSet.IsFavorite),
       },
       {
         key: "unfavorite",
@@ -431,12 +504,31 @@ export const WordSetsPage = () => {
         variant: "secondary",
         onClick: (selected) => {
           void (async () => {
-            for (const row of selected.filter((item) => item.wordSet.IsFavorite)) {
+            for (const row of selected.filter(
+              (item) => item.wordSet.IsFavorite
+            )) {
               await handleToggleFavorite(row.wordSet, false);
             }
           })();
         },
-        disabled: (selected) => selected.length === 0 || selected.every((row) => !row.wordSet.IsFavorite),
+        disabled: (selected) =>
+          selected.length === 0 ||
+          selected.every((row) => !row.wordSet.IsFavorite),
+      },
+      {
+        key: "study",
+        label: (
+          <span className="inline-flex items-center gap-1.5">
+            <IconPlayerPlay className="size-4" /> Bắt đầu học
+          </span>
+        ),
+        variant: "primary",
+        onClick: (selected) => {
+          const target = selected[0];
+          if (!target) return;
+          navigate(`/study?wordSetId=${target.id}`);
+        },
+        disabled: (selected) => selected.length !== 1,
       },
       {
         key: "edit",
@@ -483,136 +575,91 @@ export const WordSetsPage = () => {
         disabled: (selected) => selected.length === 0,
       },
     ],
-    [handleToggleFavorite, navigate, openDeleteDialog, openEditDialog],
+    [
+      handleToggleFavorite,
+      navigate,
+      openCreateDialog,
+      openDeleteDialog,
+      openEditDialog,
+    ]
   );
 
   return (
-    <div className="flex flex-col gap-5 px-4 py-6 md:gap-8 md:px-8 md:py-8">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold text-foreground">Word Sets</h1>
-        <p className="text-sm text-muted-foreground max-w-2xl">
-          Quản lý các bộ từ vựng của bạn, thêm mới, chỉnh sửa hoặc đánh dấu yêu thích để truy cập nhanh.
-        </p>
-        {error && (
-          <span className="text-sm text-destructive">{error}</span>
-        )}
-      </div>
+    <PageShell className="gap-5 md:gap-8">
+      <PageHeader
+        title="Word sets"
+        description="Quản lý các bộ từ vựng và đánh dấu những bộ quan trọng."
+      />
+      {error ? (
+        <PageSection>
+          <Typography className="text-sm text-destructive">{error}</Typography>
+        </PageSection>
+      ) : null}
 
-      <div>
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="flex flex-col gap-4 border-b border-border/60 bg-muted/20 px-6 py-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1">
-                <CardTitle className="text-base font-semibold text-foreground">
-                  Tổng số: {state.totalCount.toLocaleString()} word set
-                </CardTitle>
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Trang {state.totalCount === 0 ? 0 : page} / {Math.max(state.totalPages, 1)}
-                </span>
-              </div>
-              <Button
-                variant="default"
-                size="sm"
-                className="gap-2 self-start md:self-auto"
-                onClick={openCreateDialog}
-              >
-                <IconPlus className="size-4" /> Thêm word set
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <DataTable
-              data={tableData}
-              columns={columns}
-              loading={loading}
-              enableTabs={false}
-              enableDragAndDrop={false}
-              selectable
-              buttons={toolbarButtons}
-              pagination={pagination}
-              onFiltersChange={handleFiltersChange}
-              onSortChange={handleSortChange}
-              onSearchChange={handleSearchChange}
-              searchableColumns={searchableColumns}
-              filterFields={filterFields}
-            />
-          </CardContent>
-        </Card>
-      </div>
+      <PageSection>
+        <DataTable
+          data={tableData}
+          columns={columns}
+          loading={loading}
+          enableTabs={false}
+          enableDragAndDrop={false}
+          selectable
+          buttons={toolbarButtons}
+          groupToolbarButtons={false}
+          pagination={pagination}
+          onFiltersChange={handleFiltersChange}
+          onSortChange={handleSortChange}
+          onSearchChange={handleSearchChange}
+          searchableColumns={searchableColumns}
+          filterFields={filterFields}
+        />
+      </PageSection>
 
-      <Dialog open={dialogState.open} onOpenChange={(open) => (open ? dialogState.open : closeDialog())}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {dialogState.mode === "create" ? "Tạo word set mới" : "Chỉnh sửa word set"}
-            </DialogTitle>
-          </DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={handleFormSubmit}>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="wordset-title">Tiêu đề</Label>
-              <Input
-                id="wordset-title"
-                value={formValues.title}
-                onChange={(event) => setFormValues((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Nhập tiêu đề"
-                required
-                disabled={formSubmitting}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="wordset-description">Mô tả</Label>
-              <Textarea
-                id="wordset-description"
-                value={formValues.description}
-                onChange={(event) => setFormValues((prev) => ({ ...prev, description: event.target.value }))}
-                placeholder="Mô tả ngắn gọn cho word set"
-                disabled={formSubmitting}
-                className="min-h-32"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <Checkbox
-                checked={formValues.isFavorite}
-                onCheckedChange={(checked) =>
-                  setFormValues((prev) => ({ ...prev, isFavorite: checked === true }))
-                }
-                disabled={formSubmitting}
-              />
-              Đánh dấu là yêu thích
-            </label>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeDialog} disabled={formSubmitting}>
-                Hủy
-              </Button>
-              <Button type="submit" disabled={formSubmitting || formValues.title.trim().length === 0}>
-                {formSubmitting ? "Đang lưu..." : "Lưu"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={deleteState.open} onOpenChange={(open) => (open ? deleteState.open : closeDeleteDialog())}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteState.wordSet
-                ? `Bạn có chắc muốn xóa "${deleteState.wordSet.Title}"? Thao tác này không thể hoàn tác.`
-                : "Bạn có chắc muốn xóa word set này?"}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={closeDeleteDialog} disabled={deleteSubmitting}>
-              Hủy
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} disabled={deleteSubmitting} className="bg-destructive">
-              {deleteSubmitting ? "Đang xóa..." : "Xóa"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <ResponsiveDialog
+        open={dialogState.open}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) return;
+          if (formSubmitting) return;
+          closeDialog();
+        }}
+        title=
+          {dialogState.mode === "create"
+            ? "Tạo word set mới"
+            : "Chỉnh sửa word set"}
+        desktopContentClassName="max-w-lg"
+      >
+        <FormBuilder<WordSetFormValues>
+          key={dialogState.wordSet?.Id ?? dialogState.mode}
+          className="pt-2"
+          fields={wordSetFormFields}
+          defaultValues={formDefaultValues}
+          onSubmit={handleFormSubmit}
+          onCancel={closeDialog}
+          submitting={formSubmitting}
+          submitLabel={submitLabel}
+          cancelLabel="Hủy"
+          columns={1}
+          schema={wordSetFormSchema}
+        />
+      </ResponsiveDialog>
+      <ConfirmDialog
+        open={deleteState.open}
+        title="Xác nhận xóa"
+        description={
+          deleteState.wordSet
+            ? `Bạn có chắc muốn xóa "${deleteState.wordSet.Title}"? Thao tác này không thể hoàn tác.`
+            : "Bạn có chắc muốn xóa word set này?"
+        }
+        confirmLabel="Xóa"
+        loadingLabel="Đang xóa..."
+        confirmLoading={deleteSubmitting}
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      />
+  </PageShell>
   );
 };
 

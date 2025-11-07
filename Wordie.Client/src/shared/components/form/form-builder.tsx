@@ -1,24 +1,41 @@
 import * as React from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
 import {
-  Controller,
   type DefaultValues,
   type FieldValues,
   type Path,
   type SubmitHandler,
   useForm,
+  type UseFormProps,
+  type UseFormReturn,
 } from "react-hook-form"
 import type { DateRange } from "react-day-picker"
+import type { ZodType } from "zod"
 
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/shared/components/ui/button"
 import { Checkbox } from "@/shared/components/ui/checkbox"
 import { Input } from "@/shared/components/ui/input"
-import { Label } from "@/shared/components/ui/label"
 import { Textarea } from "@/shared/components/ui/textarea"
 import { ComboBox } from "@/shared/components/combobox"
 import { MultiSelect, type MultiSelectOption } from "@/shared/components/ui/multi-select"
 import { DatePicker } from "@/shared/components/ui/date-picker"
 import { DateRangePicker } from "@/shared/components/ui/date-range-picker"
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form"
+import {
+  Field,
+  FieldContent,
+  FieldDescription as FieldHint,
+  FieldTitle,
+} from "@/shared/components/ui/field"
 
 export type FormFieldType =
   | "text"
@@ -128,7 +145,11 @@ export interface FormBuilderProps<TValues extends FieldValues = FieldValues> {
   cancelLabel?: string
   columns?: ColumnCount
   className?: string
-  renderFooter?: React.ReactNode
+  schema?: ZodType<TValues>
+  formOptions?: Omit<UseFormProps<TValues>, "defaultValues" | "values" | "resolver">
+  renderFooter?:
+    | React.ReactNode
+    | ((form: UseFormReturn<TValues>) => React.ReactNode)
 }
 
 const COLUMN_CLASS_MAP: Record<ColumnCount, string> = {
@@ -206,10 +227,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
   cancelLabel = "Cancel",
   columns = 1,
   className,
+  schema,
+  formOptions,
   renderFooter,
 }: FormBuilderProps<TValues>) {
   const form = useForm<TValues>({
+    resolver: schema ? zodResolver(schema) : undefined,
     defaultValues: defaultValues as DefaultValues<TValues> | undefined,
+    ...formOptions,
   })
 
   React.useEffect(() => {
@@ -220,295 +245,504 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
 
   const gridClass = COLUMN_CLASS_MAP[columns]
 
+  const footerContent =
+    typeof renderFooter === "function" ? renderFooter(form) : renderFooter
+
   return (
-    <form
-      onSubmit={form.handleSubmit(onSubmit)}
-      className={cn("flex flex-col gap-6", className)}
-    >
-  <div className={cn("grid gap-4", gridClass)}>
-        {fields.map((field) => {
-          const fieldKey = field.name
-          const rules = field.required
-            ? {
-                required: typeof field.label === "string" ? `${field.label} là bắt buộc` : "Thông tin này là bắt buộc",
-              }
-            : undefined
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className={cn("flex flex-col gap-6", className)}
+      >
+        <div className={cn("grid gap-4", gridClass)}>
+          {fields.map((field) => {
+            const fieldKey = field.name
+            const rules = !schema && field.required
+              ? {
+                  required:
+                    typeof field.label === "string"
+                      ? `${field.label} là bắt buộc`
+                      : "Thông tin này là bắt buộc",
+                }
+              : undefined
 
-          switch (field.type) {
-            case "text":
-            case "number":
-              return (
-                <Controller
-                  key={String(fieldKey)}
-                  name={fieldKey}
-                  control={form.control}
-                  rules={rules}
-                  render={({ field: controllerField, fieldState }) => (
-                    <div className={cn("space-y-2", getFieldWrapperClass(columns, field.colSpan), field.className)}>
-                      <Label htmlFor={String(fieldKey)}>
-                        {field.label}
-                        {field.required ? <span className="ml-1 text-destructive">*</span> : null}
-                      </Label>
-                      <Input
-                        id={String(fieldKey)}
-                        type={field.type === "number" ? "number" : "text"}
-                        inputMode={field.type === "number" ? "decimal" : undefined}
-                        placeholder={field.placeholder?.toString()}
-                        autoComplete={"autoComplete" in field ? field.autoComplete : undefined}
-                        disabled={field.disabled || submitting}
-                        value={controllerField.value ?? ""}
-                        onChange={(event) => {
-                          if (field.type === "number") {
-                            const nextValue = event.target.value
-                            controllerField.onChange(nextValue === "" ? undefined : Number(nextValue))
-                          } else {
-                            controllerField.onChange(event.target.value)
-                          }
-                        }}
-                        onBlur={controllerField.onBlur}
-                        name={controllerField.name}
-                      />
-                      {field.helperText ? (
-                        <p className="text-xs text-muted-foreground">{field.helperText}</p>
-                      ) : null}
-                      {fieldState.error ? (
-                        <p className="text-xs text-destructive">{fieldState.error.message}</p>
-                      ) : null}
-                    </div>
-                  )}
-                />
-              )
+            const baseItemClass = cn(
+              getFieldWrapperClass(columns, field.colSpan),
+              field.className,
+            )
 
-            case "textarea":
-              return (
-                <Controller
-                  key={String(fieldKey)}
-                  name={fieldKey}
-                  control={form.control}
-                  rules={rules}
-                  render={({ field: controllerField, fieldState }) => (
-                    <div className={cn("space-y-2", getFieldWrapperClass(columns, field.colSpan), field.className)}>
-                      <Label htmlFor={String(fieldKey)}>
-                        {field.label}
-                        {field.required ? <span className="ml-1 text-destructive">*</span> : null}
-                      </Label>
-                      <Textarea
-                        id={String(fieldKey)}
-                        placeholder={field.placeholder?.toString()}
-                        disabled={field.disabled || submitting}
-                        value={controllerField.value ?? ""}
-                        onChange={controllerField.onChange}
-                        onBlur={controllerField.onBlur}
-                        name={controllerField.name}
-                        rows={field.rows ?? 4}
-                      />
-                      {field.helperText ? (
-                        <p className="text-xs text-muted-foreground">{field.helperText}</p>
-                      ) : null}
-                      {fieldState.error ? (
-                        <p className="text-xs text-destructive">{fieldState.error.message}</p>
-                      ) : null}
-                    </div>
-                  )}
-                />
-              )
+            switch (field.type) {
+              case "text":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { ref, value, onChange, ...rest } = controllerField
+                      const disabled = field.disabled || submitting
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="vertical"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className="gap-2"
+                          >
+                            <FieldTitle className="text-sm font-medium">
+                              <FormLabel className="flex items-center gap-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-destructive">*</span>
+                                ) : null}
+                              </FormLabel>
+                            </FieldTitle>
+                            <FieldContent>
+                              <FormControl>
+                                <Input
+                                  ref={ref}
+                                  value={(value as string | undefined) ?? ""}
+                                  onChange={(event) => onChange(event.target.value)}
+                                  placeholder={field.placeholder?.toString()}
+                                  autoComplete={"autoComplete" in field ? field.autoComplete : undefined}
+                                  disabled={disabled}
+                                  {...rest}
+                                />
+                              </FormControl>
+                              {field.helperText ? (
+                                <FormDescription className="text-xs text-muted-foreground">
+                                  {field.helperText}
+                                </FormDescription>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
 
-            case "select":
-              return (
-                <Controller
-                  key={String(fieldKey)}
-                  name={fieldKey}
-                  control={form.control}
-                  rules={rules}
-                  render={({ field: controllerField, fieldState }) => (
-                    <div className={cn("space-y-2", getFieldWrapperClass(columns, field.colSpan), field.className)}>
-                      <Label>
-                        {field.label}
-                        {field.required ? <span className="ml-1 text-destructive">*</span> : null}
-                      </Label>
-                      <ComboBox
-                        items={field.options}
-                        value={controllerField.value ?? ""}
-                        onChange={(nextValue) => {
-                          if (nextValue === "" && field.allowEmpty === false) {
-                            return
-                          }
-                          controllerField.onChange(nextValue)
-                        }}
-                        placeholder={field.placeholder?.toString()}
-                        disabled={field.disabled || submitting}
-                      />
-                      {field.helperText ? (
-                        <p className="text-xs text-muted-foreground">{field.helperText}</p>
-                      ) : null}
-                      {fieldState.error ? (
-                        <p className="text-xs text-destructive">{fieldState.error.message}</p>
-                      ) : null}
-                    </div>
-                  )}
-                />
-              )
+              case "number":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { ref, value, onChange, ...rest } = controllerField
+                      const disabled = field.disabled || submitting
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="vertical"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className="gap-2"
+                          >
+                            <FieldTitle className="text-sm font-medium">
+                              <FormLabel className="flex items-center gap-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-destructive">*</span>
+                                ) : null}
+                              </FormLabel>
+                            </FieldTitle>
+                            <FieldContent>
+                              <FormControl>
+                                <Input
+                                  ref={ref}
+                                  type="number"
+                                  value={
+                                    typeof value === "number" || typeof value === "string"
+                                      ? String(value)
+                                      : ""
+                                  }
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value
+                                    onChange(
+                                      nextValue === ""
+                                        ? undefined
+                                        : Number(nextValue),
+                                    )
+                                  }}
+                                  placeholder={field.placeholder?.toString()}
+                                  disabled={disabled}
+                                  inputMode="decimal"
+                                  min={"min" in field ? field.min : undefined}
+                                  max={"max" in field ? field.max : undefined}
+                                  step={"step" in field ? field.step : undefined}
+                                  {...rest}
+                                />
+                              </FormControl>
+                              {field.helperText ? (
+                                <FormDescription className="text-xs text-muted-foreground">
+                                  {field.helperText}
+                                </FormDescription>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
 
-            case "multi-select":
-              return (
-                <Controller
-                  key={String(fieldKey)}
-                  name={fieldKey}
-                  control={form.control}
-                  rules={rules}
-                  render={({ field: controllerField, fieldState }) => (
-                    <div className={cn("space-y-2", getFieldWrapperClass(columns, field.colSpan), field.className)}>
-                      <Label>
-                        {field.label}
-                        {field.required ? <span className="ml-1 text-destructive">*</span> : null}
-                      </Label>
-                      <MultiSelect
-                        options={field.options}
-                        value={Array.isArray(controllerField.value) ? controllerField.value : []}
-                        onChange={(next) => controllerField.onChange(next)}
-                        placeholder={field.placeholder?.toString()}
-                        disabled={field.disabled || submitting}
-                        maxBadgeCount={field.maxBadgeCount}
-                      />
-                      {field.helperText ? (
-                        <p className="text-xs text-muted-foreground">{field.helperText}</p>
-                      ) : null}
-                      {fieldState.error ? (
-                        <p className="text-xs text-destructive">{fieldState.error.message}</p>
-                      ) : null}
-                    </div>
-                  )}
-                />
-              )
+              case "textarea":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { ref, value, onChange, ...rest } = controllerField
+                      const disabled = field.disabled || submitting
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="vertical"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className="gap-2"
+                          >
+                            <FieldTitle className="text-sm font-medium">
+                              <FormLabel className="flex items-center gap-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-destructive">*</span>
+                                ) : null}
+                              </FormLabel>
+                            </FieldTitle>
+                            <FieldContent>
+                              <FormControl>
+                                <Textarea
+                                  ref={ref}
+                                  value={(value as string | undefined) ?? ""}
+                                  onChange={onChange}
+                                  placeholder={field.placeholder?.toString()}
+                                  disabled={disabled}
+                                  rows={field.rows ?? 4}
+                                  {...rest}
+                                />
+                              </FormControl>
+                              {field.helperText ? (
+                                <FormDescription className="text-xs text-muted-foreground">
+                                  {field.helperText}
+                                </FormDescription>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
 
-            case "date":
-              return (
-                <Controller
-                  key={String(fieldKey)}
-                  name={fieldKey}
-                  control={form.control}
-                  rules={rules}
-                  render={({ field: controllerField, fieldState }) => (
-                    <div className={cn("space-y-2", getFieldWrapperClass(columns, field.colSpan), field.className)}>
-                      <Label>
-                        {field.label}
-                        {field.required ? <span className="ml-1 text-destructive">*</span> : null}
-                      </Label>
-                      <DatePicker
-                        value={controllerField.value ? new Date(controllerField.value as Date) : undefined}
-                        onChange={(date) => controllerField.onChange(date ?? undefined)}
-                        placeholder={field.placeholder?.toString()}
-                        disabled={buildDateDisabledPredicate({
-                          isDisabled: field.disabled || submitting,
-                          minDate: field.minDate,
-                          maxDate: field.maxDate,
-                        })}
-                        className="w-full"
-                      />
-                      {field.helperText ? (
-                        <p className="text-xs text-muted-foreground">{field.helperText}</p>
-                      ) : null}
-                      {fieldState.error ? (
-                        <p className="text-xs text-destructive">{fieldState.error.message}</p>
-                      ) : null}
-                    </div>
-                  )}
-                />
-              )
+              case "select":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { ref, value, onChange, ...rest } = controllerField
+                      const disabled = field.disabled || submitting
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="vertical"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className="gap-2"
+                          >
+                            <FieldTitle className="text-sm font-medium">
+                              <FormLabel className="flex items-center gap-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-destructive">*</span>
+                                ) : null}
+                              </FormLabel>
+                            </FieldTitle>
+                            <FieldContent>
+                              <FormControl>
+                                <ComboBox
+                                  ref={ref}
+                                  id={rest.name}
+                                  items={field.options}
+                                  value={(value as string | undefined) ?? ""}
+                                  onChange={(nextValue) => {
+                                    if (nextValue === "" && field.allowEmpty === false) {
+                                      return
+                                    }
+                                    onChange(nextValue)
+                                  }}
+                                  placeholder={field.placeholder?.toString()}
+                                  disabled={disabled}
+                                />
+                              </FormControl>
+                              {field.helperText ? (
+                                <FormDescription className="text-xs text-muted-foreground">
+                                  {field.helperText}
+                                </FormDescription>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
 
-            case "date-range":
-              return (
-                <Controller
-                  key={String(fieldKey)}
-                  name={fieldKey}
-                  control={form.control}
-                  rules={rules}
-                  render={({ field: controllerField, fieldState }) => (
-                    <div className={getFieldWrapperClass(columns, field.colSpan)}>
-                      <Label>
-                        {field.label}
-                        {field.required ? <span className="ml-1 text-destructive">*</span> : null}
-                      </Label>
-                      <DateRangePicker
-                        value={controllerField.value as DateRange | undefined}
-                        onChange={(range) => controllerField.onChange(range)}
-                        placeholder={field.placeholder?.toString()}
-                        disabled={buildDateDisabledPredicate({
-                          isDisabled: field.disabled || submitting,
-                          minDate: field.minDate,
-                          maxDate: field.maxDate,
-                        })}
-                        className="w-full"
-                        monthCount={field.monthCount ?? 1}
-                      />
-                      {field.helperText ? (
-                        <p className="text-xs text-muted-foreground">{field.helperText}</p>
-                      ) : null}
-                      {fieldState.error ? (
-                        <p className="text-xs text-destructive">{fieldState.error.message}</p>
-                      ) : null}
-                    </div>
-                  )}
-                />
-              )
+              case "multi-select":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { value, onChange } = controllerField
+                      const disabled = field.disabled || submitting
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="vertical"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className="gap-2"
+                          >
+                            <FieldTitle className="text-sm font-medium">
+                              <FormLabel className="flex items-center gap-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-destructive">*</span>
+                                ) : null}
+                              </FormLabel>
+                            </FieldTitle>
+                            <FieldContent>
+                              <FormControl>
+                                <div>
+                                  <MultiSelect
+                                    options={field.options}
+                                    value={Array.isArray(value) ? (value as string[]) : []}
+                                    onChange={(next) => onChange(next)}
+                                    placeholder={field.placeholder?.toString()}
+                                    disabled={disabled}
+                                    maxBadgeCount={field.maxBadgeCount}
+                                  />
+                                </div>
+                              </FormControl>
+                              {field.helperText ? (
+                                <FormDescription className="text-xs text-muted-foreground">
+                                  {field.helperText}
+                                </FormDescription>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
 
-            case "checkbox":
-              return (
-                <Controller
-                  key={String(fieldKey)}
-                  name={fieldKey}
-                  control={form.control}
-                  rules={rules}
-                  render={({ field: controllerField, fieldState }) => (
-                    <div
-                      className={cn(
-                        "flex items-start gap-2 rounded-md border border-transparent p-2 transition-colors space-y-0",
-                        field.disabled ? "opacity-60" : "hover:border-border",
-                        getFieldWrapperClass(columns, field.colSpan),
-                        field.className
-                      )}
-                    >
-                      <Checkbox
-                        id={fieldKey}
-                        checked={!!controllerField.value}
-                        onCheckedChange={(checked) => controllerField.onChange(checked === true)}
-                        disabled={field.disabled || submitting}
-                      />
-                      <div className="space-y-1">
-                        <Label htmlFor={String(fieldKey)} className="leading-none">
-                          {field.label}
-                        </Label>
-                        {field.description ? (
-                          <p className="text-xs text-muted-foreground">{field.description}</p>
-                        ) : null}
-                        {fieldState.error ? (
-                          <p className="text-xs text-destructive">{fieldState.error.message}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-                />
-              )
+              case "date":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { value, onChange } = controllerField
+                      const disabled = field.disabled || submitting
+                      const selectedDate = (value as any) instanceof Date
+                        ? (value as Date)
+                        : value
+                          ? new Date(value as unknown as string)
+                          : undefined
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="vertical"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className="gap-2"
+                          >
+                            <FieldTitle className="text-sm font-medium">
+                              <FormLabel className="flex items-center gap-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-destructive">*</span>
+                                ) : null}
+                              </FormLabel>
+                            </FieldTitle>
+                            <FieldContent>
+                              <FormControl>
+                                <div>
+                                  <DatePicker
+                                    value={selectedDate}
+                                    onChange={(date) => onChange(date ?? undefined)}
+                                    placeholder={field.placeholder?.toString()}
+                                    disabled={buildDateDisabledPredicate({
+                                      isDisabled: disabled,
+                                      minDate: field.minDate,
+                                      maxDate: field.maxDate,
+                                    })}
+                                    className="w-full"
+                                  />
+                                </div>
+                              </FormControl>
+                              {field.helperText ? (
+                                <FormDescription className="text-xs text-muted-foreground">
+                                  {field.helperText}
+                                </FormDescription>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
 
-            default:
-              return null
-          }
-        })}
-      </div>
+              case "date-range":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { value, onChange } = controllerField
+                      const disabled = field.disabled || submitting
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="vertical"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className="gap-2"
+                          >
+                            <FieldTitle className="text-sm font-medium">
+                              <FormLabel className="flex items-center gap-1">
+                                {field.label}
+                                {field.required ? (
+                                  <span className="text-destructive">*</span>
+                                ) : null}
+                              </FormLabel>
+                            </FieldTitle>
+                            <FieldContent>
+                              <FormControl>
+                                <div>
+                                  <DateRangePicker
+                                    value={value as DateRange | undefined}
+                                    onChange={(range) => onChange(range)}
+                                    placeholder={field.placeholder?.toString()}
+                                    disabled={buildDateDisabledPredicate({
+                                      isDisabled: disabled,
+                                      minDate: field.minDate,
+                                      maxDate: field.maxDate,
+                                    })}
+                                    className="w-full"
+                                    monthCount={field.monthCount ?? 1}
+                                  />
+                                </div>
+                              </FormControl>
+                              {field.helperText ? (
+                                <FormDescription className="text-xs text-muted-foreground">
+                                  {field.helperText}
+                                </FormDescription>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
 
-      {renderFooter ?? (
-        <div className="flex justify-end gap-2">
-          {onCancel ? (
-            <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
-              {cancelLabel}
-            </Button>
-          ) : null}
-          <Button type="submit" disabled={submitting}>
-            {submitting ? `${submitLabel}...` : submitLabel}
-          </Button>
+              case "checkbox":
+                return (
+                  <FormField
+                    key={String(fieldKey)}
+                    control={form.control}
+                    name={fieldKey}
+                    rules={rules}
+                    render={({ field: controllerField, fieldState }) => {
+                      const { value, onChange, ...rest } = controllerField
+                      const disabled = field.disabled || submitting
+                      return (
+                        <FormItem className={baseItemClass}>
+                          <Field
+                            orientation="responsive"
+                            data-invalid={fieldState.error ? "true" : undefined}
+                            data-disabled={disabled ? "true" : undefined}
+                            className={cn(
+                              "items-start gap-3 rounded-md border border-transparent p-3 transition-colors",
+                              disabled ? "opacity-60" : "hover:border-border",
+                            )}
+                          >
+                            <FormControl>
+                              <Checkbox
+                                checked={!!value}
+                                onCheckedChange={(checked) => onChange(checked === true)}
+                                disabled={disabled}
+                                {...rest}
+                              />
+                            </FormControl>
+                            <FieldContent className="gap-1.5">
+                              <FieldTitle className="text-sm font-medium">
+                                <span className="flex items-center gap-1">
+                                  {field.label}
+                                  {field.required ? (
+                                    <span className="text-destructive">*</span>
+                                  ) : null}
+                                </span>
+                              </FieldTitle>
+                              {field.description ? (
+                                <FieldHint className="text-xs text-muted-foreground">
+                                  {field.description}
+                                </FieldHint>
+                              ) : null}
+                              <FormMessage />
+                            </FieldContent>
+                          </Field>
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )
+
+              default:
+                return null
+            }
+          })}
         </div>
-      )}
-    </form>
+
+        {footerContent ?? (
+          <div className="flex justify-end gap-2">
+            {onCancel ? (
+              <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
+                {cancelLabel}
+              </Button>
+            ) : null}
+            <Button type="submit" disabled={submitting}>
+              {submitting ? `${submitLabel}...` : submitLabel}
+            </Button>
+          </div>
+        )}
+      </form>
+    </Form>
   )
 }
 

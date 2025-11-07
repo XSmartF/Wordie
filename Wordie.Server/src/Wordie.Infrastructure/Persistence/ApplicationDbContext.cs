@@ -12,6 +12,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Word> Words { get; set; } = default!;
     public DbSet<WordSet> WordSets { get; set; } = default!;
+    public DbSet<StudySession> StudySessions { get; set; } = default!;
+    public DbSet<StudyCardProgress> StudyCardProgress { get; set; } = default!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -32,5 +34,28 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .HasOne(w => w.User)
             .WithMany()
             .HasForeignKey(w => w.UserId);
+
+        builder.Entity<StudySession>()
+            .HasOne(ss => ss.WordSet)
+            .WithMany()
+            .HasForeignKey(ss => ss.WordSetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<StudySession>()
+            .HasOne(ss => ss.User)
+            .WithMany()
+            .HasForeignKey(ss => ss.UserId);
+
+        builder.Entity<StudyCardProgress>()
+            .HasOne(cp => cp.StudySession)
+            .WithMany(ss => ss.CardProgress)
+            .HasForeignKey(cp => cp.StudySessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<StudyCardProgress>()
+            .HasOne(cp => cp.Word)
+            .WithMany()
+            .HasForeignKey(cp => cp.WordId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

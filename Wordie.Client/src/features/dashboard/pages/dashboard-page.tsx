@@ -6,6 +6,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { useDashboardOverviewQuery } from "@/features/dashboard/hooks/use-dashboard-overview";
 import type { DashboardWordSetSummary } from "@/features/dashboard/types";
 import { extractErrorMessage } from "@/shared/api/http-client";
+import { PageHeader, PageSection, PageShell } from "@/shared/components/page";
 import { ChartAreaInteractive } from "@/shared/components/chart-area-interactive";
 import { DataTable } from "@/shared/components/data-table";
 import { SectionCards } from "@/shared/components/section-cards";
@@ -35,22 +36,22 @@ export type DashboardTableRow = {
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-      <div className="px-4 lg:px-6">
+    <PageShell>
+      <PageSection>
         <Skeleton className="h-6 w-40" />
-      </div>
-      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+      </PageSection>
+      <PageSection className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Skeleton key={index} className="h-32 w-full" />
         ))}
-      </div>
-      <div className="px-4 lg:px-6">
+      </PageSection>
+      <PageSection>
         <Skeleton className="h-[260px] w-full" />
-      </div>
-      <div className="px-4 lg:px-6">
+      </PageSection>
+      <PageSection>
         <Skeleton className="h-[360px] w-full" />
-      </div>
-    </div>
+      </PageSection>
+    </PageShell>
   );
 }
 
@@ -126,40 +127,43 @@ export const DashboardPage = () => {
   }
 
   return (
-    <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-      <div className="flex items-center justify-between px-4 lg:px-6">
-        <h1 className="text-lg font-semibold text-foreground">Dashboard</h1>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void refetch()}
-          className="gap-2"
-          disabled={isFetching}
-        >
-          <IconRefresh className="size-4" />
-          {isFetching ? "Refreshing..." : "Refresh"}
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Dashboard"
+        titleClassName="text-lg font-semibold"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refetch()}
+            className="gap-2"
+            disabled={isFetching}
+          >
+            <IconRefresh className="size-4" />
+            {isFetching ? "Refreshing..." : "Refresh"}
+          </Button>
+        }
+      />
 
       {hasErrorWithoutData ? (
-        <div className="px-4 lg:px-6">
+        <PageSection>
           <Empty className="border border-dashed">
             <EmptyHeader>
               <EmptyTitle>Unable to load dashboard</EmptyTitle>
               <EmptyDescription>{extractErrorMessage(error)}</EmptyDescription>
             </EmptyHeader>
           </Empty>
-        </div>
+        </PageSection>
       ) : (
         <>
           {data ? <SectionCards summary={data.summary} /> : null}
-          <div className="px-4 lg:px-6">
+          <PageSection>
             <ChartAreaInteractive
               series={data?.trends ?? []}
               isLoading={isFetching && !data}
             />
-          </div>
-          <div className="px-4 lg:px-6">
+          </PageSection>
+          <PageSection>
             <DataTable
               data={tableRows}
               columns={columns}
@@ -170,10 +174,10 @@ export const DashboardPage = () => {
               searchableColumns={[]}
               filterableColumns={[]}
             />
-          </div>
+          </PageSection>
         </>
       )}
-    </div>
+    </PageShell>
   );
 };
 

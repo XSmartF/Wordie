@@ -1,86 +1,66 @@
-import { httpClient } from "@/shared/api/http-client";
-import type { PagedRequest, PagedResponse } from "@/shared/types/pagination";
-import type { WordDto } from "@/features/words/types";
+import type { WordWithProgress } from "@/core/word-sets/types";
+import { wordSetsService } from "@/core/word-sets/service";
 import type {
-  WordSetDto,
-  CreateWordSetRequest,
-  UpdateWordSetRequest,
   BulkCreateWordInput,
+  CreateWordSetRequest,
   GeminiWordsRequest,
+  UpdateWordSetRequest,
+  WordSetDto,
 } from "../types";
-
-const mapPayload = (payload: CreateWordSetRequest | UpdateWordSetRequest) => ({
-  Title: payload.title,
-  Description: payload.description,
-  IsFavorite: payload.isFavorite ?? false,
-});
+import type { PagedRequest, PagedResponse } from "@/shared/types/pagination";
 
 export const wordSetsApi = {
-  query: async (request: PagedRequest): Promise<PagedResponse<WordSetDto>> => {
-    const response = await httpClient.post("/wordsets/query", request, {
-      skipErrorToast: true,
-    });
-    return response.data as PagedResponse<WordSetDto>;
+  query: (request: PagedRequest): Promise<PagedResponse<WordSetDto>> => {
+    return wordSetsService.query(request);
   },
 
-  get: async (id: string): Promise<WordSetDto> => {
-    const response = await httpClient.get(`/wordsets/${id}`);
-    return response.data as WordSetDto;
+  list: (): Promise<WordSetDto[]> => {
+    return wordSetsService.list();
   },
 
-  create: async (data: CreateWordSetRequest): Promise<WordSetDto> => {
-    const response = await httpClient.post("/wordsets", mapPayload(data));
-    return response.data as WordSetDto;
+  get: (id: string): Promise<WordSetDto> => {
+    return wordSetsService.get(id);
   },
 
-  update: async (
-    id: string,
-    data: UpdateWordSetRequest
-  ): Promise<void> => {
-    await httpClient.put(`/wordsets/${id}`, mapPayload(data));
+  create: (data: CreateWordSetRequest): Promise<WordSetDto> => {
+    return wordSetsService.create(data);
   },
 
-  delete: async (id: string): Promise<void> => {
-    await httpClient.delete(`/wordsets/${id}`);
+  update: (id: string, data: UpdateWordSetRequest): Promise<void> => {
+    return wordSetsService.update(id, data);
   },
 
-  getWords: async (id: string, request: PagedRequest): Promise<PagedResponse<WordDto>> => {
-    const response = await httpClient.post(`/wordsets/${id}/words/query`, request);
-    return response.data as PagedResponse<WordDto>;
+  delete: (id: string): Promise<void> => {
+    return wordSetsService.delete(id);
   },
 
-  createWord: async (
+  getWords: (id: string, request: PagedRequest): Promise<PagedResponse<WordWithProgress>> => {
+    return wordSetsService.getWords(id, request);
+  },
+
+  createWord: (
     id: string,
     data: { term: string; definition: string; level: number }
-  ): Promise<WordDto> => {
-    const response = await httpClient.post(`/wordsets/${id}/words`, data);
-    return response.data as WordDto;
+  ): Promise<WordWithProgress> => {
+    return wordSetsService.createWord(id, data);
   },
 
-  createWordsBulk: async (id: string, words: BulkCreateWordInput[]): Promise<WordDto[]> => {
-    const response = await httpClient.post(`/wordsets/${id}/words/bulk`, {
-      words: words.map((word) => ({
-        term: word.term,
-        definition: word.definition,
-        level: word.level,
-      })),
-    });
-
-    return response.data as WordDto[];
+  createWordsBulk: (id: string, words: BulkCreateWordInput[]): Promise<WordWithProgress[]> => {
+    return wordSetsService.createWordsBulk(id, words);
   },
 
-  createWordsWithGemini: async (id: string, payload: GeminiWordsRequest): Promise<WordDto[]> => {
-    const response = await httpClient.post(`/wordsets/${id}/words/gemini`, payload);
-    return response.data as WordDto[];
+  createWordsWithGemini: (
+    id: string,
+    payload: GeminiWordsRequest,
+  ): Promise<WordWithProgress[]> => {
+    return wordSetsService.createWordsWithGemini(id, payload);
   },
 
-  updateFavorite: async (id: string, isFavorite: boolean): Promise<WordSetDto> => {
-    const response = await httpClient.patch(`/wordsets/${id}/favorite`, { IsFavorite: isFavorite });
-    return response.data as WordSetDto;
+  updateFavorite: (id: string, isFavorite: boolean): Promise<WordSetDto> => {
+    return wordSetsService.updateFavorite(id, isFavorite);
   },
 
-  getFavorites: async (): Promise<WordSetDto[]> => {
-    const response = await httpClient.get("/wordsets/favorites");
-    return response.data as WordSetDto[];
+  getFavorites: (): Promise<WordSetDto[]> => {
+    return wordSetsService.getFavorites();
   },
 };

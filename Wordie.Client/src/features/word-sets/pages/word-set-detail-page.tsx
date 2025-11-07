@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { z } from "zod";
 import {
   IconArrowLeft,
   IconChevronLeft,
   IconChevronRight,
   IconEdit,
   IconFiles,
+  IconPlayerPlay,
   IconPlus,
   IconRefresh,
   IconRepeat,
@@ -17,15 +19,17 @@ import { format, formatDistanceToNow } from "date-fns";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { wordSetsApi } from "@/features/word-sets/api/word-sets-api";
-import type { BulkCreateWordInput, GeminiWordsRequest, WordSetDto } from "@/features/word-sets/types";
-import type { WordDto } from "@/features/words/types";
+import type { BulkCreateWordInput, GeminiWordsRequest, WordDto, WordSetDto } from "@/features/word-sets/types";
 import type {
   FilterRule,
   PagedResponse,
   SearchRule,
   SortDirection,
 } from "@/shared/types/pagination";
+import { PageHeader, PageSection, PageShell } from "@/shared/components/page";
+import { Typography } from "@/shared/components/typography";
 import { Button } from "@/shared/components/ui/button";
+import { SplitButton } from "@/shared/components/ui/split-button";
 import {
   Card,
   CardAction,
@@ -34,14 +38,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/components/ui/dialog";
+import { ResponsiveDialog } from "@/shared/components/responsive-dialog";
 import {
   Empty,
   EmptyDescription,
@@ -123,11 +120,16 @@ type WordRow = {
 
 type FetchError = string | null;
 
-type SingleWordFormValues = {
-  term: string;
-  definition: string;
-  level: number;
-};
+const singleWordFormSchema = z.object({
+  term: z.string().trim().min(1, "Vui lòng nhập từ vựng"),
+  definition: z.string().trim().min(1, "Vui lòng nhập định nghĩa"),
+  level: z
+    .number()
+    .min(1, "Độ khó tối thiểu là 1")
+    .max(10, "Độ khó tối đa là 10"),
+});
+
+type SingleWordFormValues = z.infer<typeof singleWordFormSchema>;
 
 function FlashcardDeck({
   words,
@@ -667,6 +669,30 @@ const WordSetDetailPage = () => {
 
   const wordCount = wordsState?.TotalCount ?? 0;
 
+  const addWordMenuItems = useMemo(
+    () => [
+      {
+        key: "bulk",
+        label: "Thêm nhiều",
+        icon: <IconFiles className="size-4" />,
+        onSelect: () => {
+          openBulkDialog();
+        },
+        disabled: bulkSubmitting,
+      },
+      {
+        key: "gemini",
+        label: "Gemini",
+        icon: <IconSparkles className="size-4" />,
+        onSelect: () => {
+          openGeminiDialog();
+        },
+        disabled: geminiSubmitting,
+      },
+    ],
+    [bulkSubmitting, geminiSubmitting, openBulkDialog, openGeminiDialog],
+  );
+
   const wordRows = useMemo<WordRow[]>(() => {
     if (!wordsState) return [];
 
@@ -755,42 +781,6 @@ const WordSetDetailPage = () => {
   const wordTableButtons = useMemo<TableButton<WordRow>[]>(
     () => [
       {
-        key: "add",
-        label: (
-          <span className="inline-flex items-center gap-1.5">
-            <IconPlus className="size-4" /> Thêm từ
-          </span>
-        ),
-        variant: "primary",
-        onClick: () => {
-          openAddWordDialog();
-        },
-      },
-      {
-        key: "addMany",
-        label: (
-          <span className="inline-flex items-center gap-1.5">
-            <IconFiles className="size-4" /> Thêm nhiều
-          </span>
-        ),
-        variant: "secondary",
-        onClick: () => {
-          openBulkDialog();
-        },
-      },
-      {
-        key: "gemini",
-        label: (
-          <span className="inline-flex items-center gap-1.5">
-            <IconSparkles className="size-4" /> Gemini
-          </span>
-        ),
-        variant: "ghost",
-        onClick: () => {
-          openGeminiDialog();
-        },
-      },
-      {
         key: "edit",
         label: (
           <span className="inline-flex items-center gap-1.5">
@@ -821,7 +811,7 @@ const WordSetDetailPage = () => {
         disabled: (selected) => selected.length === 0,
       },
     ],
-    [openAddWordDialog, openBulkDialog, openGeminiDialog],
+    [],
   );
 
   const handleTableSearchChange = useCallback((search: SearchRule | undefined) => {
@@ -870,8 +860,8 @@ const WordSetDetailPage = () => {
 
   if (!id) {
     return (
-      <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-        <div className="px-4 lg:px-6">
+      <PageShell>
+        <PageSection>
           <Empty className="border border-dashed">
             <EmptyHeader>
               <EmptyTitle>Word set not found</EmptyTitle>
@@ -883,21 +873,52 @@ const WordSetDetailPage = () => {
               Back
             </Button>
           </Empty>
-        </div>
-      </div>
+        </PageSection>
+      </PageShell>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-      <div className="flex items-center gap-3 px-4 lg:px-6">
-        <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate(-1)}>
-          <IconArrowLeft className="size-4" /> Back
-        </Button>
-        <h1 className="text-lg font-semibold text-foreground">Word Set Details</h1>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate(-1)}>
+              <IconArrowLeft className="size-4" /> Back
+            </Button>
+            <Typography variant="h2">Word set details</Typography>
+          </div>
+        }
+        description="Xem thông tin chi tiết và quản lý các từ trong bộ."
+        actions={
+          <>
+            <SplitButton
+              size="sm"
+              primaryAction={{
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconPlus className="size-4" /> Thêm từ
+                  </span>
+                ),
+                onClick: openAddWordDialog,
+                disabled: addWordSubmitting,
+              }}
+              options={addWordMenuItems}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleRefreshAll}
+              disabled={wordSetLoading || wordsLoading || flashLoading}
+            >
+              <IconRefresh className="size-4" /> Refresh
+            </Button>
+          </>
+        }
+      />
 
-      <div className="px-4 lg:px-6">
+      <PageSection>
         <Card>
           <CardHeader>
             {wordSetLoading ? (
@@ -919,7 +940,14 @@ const WordSetDetailPage = () => {
                   {wordSet.Description ? wordSet.Description : "No description provided."}
                 </CardDescription>
                 <CardAction>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => navigate(`/study?wordSetId=${wordSet.Id}`)}
+                    >
+                      <IconPlayerPlay className="size-4" /> Học ngay
+                    </Button>
                     <Button
                       variant={wordSet.IsFavorite ? "secondary" : "outline"}
                       size="sm"
@@ -949,31 +977,31 @@ const WordSetDetailPage = () => {
               <Skeleton className="h-4 w-44" />
             ) : (
               <div className="flex flex-col gap-1 text-sm">
-                <span className="text-muted-foreground">Created</span>
-                <span className="font-medium text-foreground">{wordSetCreatedAt}</span>
-                <span className="text-xs text-muted-foreground">
+                <Typography variant="muted">Created</Typography>
+                <Typography className="font-medium text-foreground">{wordSetCreatedAt}</Typography>
+                <Typography variant="muted" className="text-xs">
                   {wordSet &&
                     `Last updated ${formatDistanceToNow(new Date(wordSet.CreatedAt), {
                       addSuffix: true,
                     })}`}
-                </span>
+                </Typography>
               </div>
             )}
             <div className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Words</span>
+              <Typography variant="muted">Words</Typography>
               {wordsLoading ? (
                 <Skeleton className="h-4 w-24" />
               ) : (
-                <span className="font-medium text-foreground">
+                <Typography className="font-medium text-foreground">
                   {wordCount.toLocaleString()} words in this set
-                </span>
+                </Typography>
               )}
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
-      <div className="px-4 lg:px-6">
+      <PageSection>
         <Card>
           <CardHeader className="flex flex-col gap-2">
             <CardTitle className="text-base">Words in this set</CardTitle>
@@ -1021,9 +1049,9 @@ const WordSetDetailPage = () => {
             )}
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
-      <div className="px-4 lg:px-6">
+      <PageSection>
         <Card>
           <CardHeader className="flex flex-col gap-2">
             <CardTitle className="text-base">Flashcards</CardTitle>
@@ -1041,9 +1069,9 @@ const WordSetDetailPage = () => {
             />
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
-      <Dialog
+      <ResponsiveDialog
         open={addWordDialogOpen}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
@@ -1052,27 +1080,23 @@ const WordSetDetailPage = () => {
             setAddWordDialogOpen(true);
           }
         }}
+        title="Thêm từ mới"
+        description="Điền từ vựng và định nghĩa. Bạn có thể quản lý độ khó để phù hợp với lộ trình học."
+        desktopContentClassName="max-w-lg"
       >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Thêm từ mới</DialogTitle>
-            <DialogDescription>
-              Điền từ vựng và định nghĩa. Bạn có thể quản lý độ khó để phù hợp với lộ trình học.
-            </DialogDescription>
-          </DialogHeader>
-          <FormBuilder<SingleWordFormValues>
-            fields={singleWordFields}
-            defaultValues={singleDefaultValues}
-            onSubmit={handleSingleWordSubmit}
-            submitting={addWordSubmitting}
-            submitLabel="Thêm từ"
-            cancelLabel="Hủy"
-            onCancel={closeAddWordDialog}
-          />
-        </DialogContent>
-      </Dialog>
+        <FormBuilder<SingleWordFormValues>
+          fields={singleWordFields}
+          defaultValues={singleDefaultValues}
+          onSubmit={handleSingleWordSubmit}
+          submitting={addWordSubmitting}
+          submitLabel="Thêm từ"
+          cancelLabel="Hủy"
+          onCancel={closeAddWordDialog}
+          schema={singleWordFormSchema}
+        />
+      </ResponsiveDialog>
 
-      <Dialog
+      <ResponsiveDialog
         open={bulkDialogOpen}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
@@ -1081,15 +1105,15 @@ const WordSetDetailPage = () => {
             setBulkDialogOpen(true);
           }
         }}
+        title="Thêm nhiều từ cùng lúc"
+        description={(
+          <>
+            Mỗi dòng tương ứng với một từ theo định dạng: <code>term | definition | level</code>. Level có thể bỏ trống để dùng giá trị mặc định.
+          </>
+        )}
+        desktopContentClassName="max-w-2xl"
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Thêm nhiều từ cùng lúc</DialogTitle>
-            <DialogDescription>
-              Mỗi dòng tương ứng với một từ theo định dạng: <code>term | definition | level</code>. Level có thể bỏ trống để dùng giá trị mặc định.
-            </DialogDescription>
-          </DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={handleBulkSubmit}>
+        <form className="flex flex-col gap-4" onSubmit={handleBulkSubmit}>
             <div className="flex flex-col gap-2">
               <Label htmlFor="bulk-words">Danh sách từ</Label>
               <Textarea
@@ -1127,19 +1151,18 @@ const WordSetDetailPage = () => {
               </div>
             </div>
             {bulkError ? <p className="text-xs text-destructive">{bulkError}</p> : null}
-            <DialogFooter>
+            <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={closeBulkDialog} disabled={bulkSubmitting}>
                 Hủy
               </Button>
               <Button type="submit" disabled={bulkSubmitting || bulkInput.trim().length === 0}>
                 {bulkSubmitting ? "Đang thêm..." : "Thêm vào set"}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
+      </ResponsiveDialog>
 
-      <Dialog
+      <ResponsiveDialog
         open={geminiDialogOpen}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
@@ -1148,15 +1171,15 @@ const WordSetDetailPage = () => {
             setGeminiDialogOpen(true);
           }
         }}
+        title="Thêm từ với Gemini"
+        description={(
+          <>
+            Mô tả chủ đề hoặc dán danh sách từ khóa. Chúng tôi sẽ gửi <strong>một</strong> yêu cầu duy nhất tới Gemini và thêm toàn bộ kết quả trả về.
+          </>
+        )}
+        desktopContentClassName="max-w-2xl"
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Thêm từ với Gemini</DialogTitle>
-            <DialogDescription>
-              Mô tả chủ đề hoặc dán danh sách từ khóa. Chúng tôi sẽ gửi <strong>một</strong> yêu cầu duy nhất tới Gemini và thêm toàn bộ kết quả trả về.
-            </DialogDescription>
-          </DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={handleGeminiSubmit}>
+        <form className="flex flex-col gap-4" onSubmit={handleGeminiSubmit}>
             <div className="flex flex-col gap-2">
               <Label htmlFor="gemini-prompt">Yêu cầu cho Gemini</Label>
               <Textarea
@@ -1216,18 +1239,17 @@ const WordSetDetailPage = () => {
               </div>
             </div>
             {geminiError ? <p className="text-xs text-destructive">{geminiError}</p> : null}
-            <DialogFooter>
+            <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={closeGeminiDialog} disabled={geminiSubmitting}>
                 Hủy
               </Button>
               <Button type="submit" disabled={geminiSubmitting || geminiPrompt.trim().length === 0}>
                 {geminiSubmitting ? "Đang gửi Gemini..." : "Gửi yêu cầu"}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
-    </div>
+      </ResponsiveDialog>
+    </PageShell>
   );
 };
 

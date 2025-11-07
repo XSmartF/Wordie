@@ -4,7 +4,6 @@ import {
   IconHelp,
   IconInnerShadowTop,
   IconListDetails,
-  IconReport,
   IconSearch,
   IconSettings,
   IconStar,
@@ -37,11 +36,6 @@ const navMain = [
     title: "Word Sets",
     url: "/wordsets",
     icon: IconListDetails,
-  },
-  {
-    title: "Study",
-    url: "/study",
-    icon: IconReport,
   },
 ]
 

@@ -86,6 +86,8 @@ builder.Services.AddHttpClient<IGeminiWordGenerator, GeminiWordGenerator>(client
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
+builder.Services.AddScoped<IStudySessionService, StudySessionService>();
+
 var app = builder.Build();
 
 // Serve Swagger UI at root so opening the app shows Swagger automatically

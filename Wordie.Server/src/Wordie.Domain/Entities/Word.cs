@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Wordie.Domain.Enums;
 
 namespace Wordie.Domain.Entities;
 
@@ -23,4 +24,27 @@ public class Word
     public ApplicationUser? User { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Study tracking
+    public double EaseFactor { get; set; } = 2.5;
+
+    public int Interval { get; set; }
+
+    public int Repetition { get; set; }
+
+    public DateTime? LastReviewedAt { get; set; }
+
+    public DateTime? DueAt { get; set; }
+
+    public int CorrectCount { get; set; }
+
+    public int IncorrectCount { get; set; }
+
+    public int Lapses { get; set; }
+
+    public int ConsecutiveCorrect { get; set; }
+
+    public StudyRating? LastRating { get; set; }
+
+    public DateTime? LastSessionAt { get; set; }
 }
