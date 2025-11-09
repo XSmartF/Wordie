@@ -14,6 +14,15 @@ public class Word
 
     public string Definition { get; set; } = string.Empty;
 
+    // Additional fields
+    public string? DefinitionVietnamese { get; set; }
+
+    public string? Example { get; set; }
+
+    public string? Note { get; set; }
+
+    public Domain.Enums.TypeOfWord? TypeOfWord { get; set; }
+
     public int Level { get; set; }
 
     // Navigation

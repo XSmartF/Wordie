@@ -81,7 +81,18 @@ public class WordsController : ControllerBase
             if (wordSet == null) return BadRequest("WordSet not found or not owned by user");
         }
 
-        var word = new Word { Term = req.Term, Definition = req.Definition, Level = req.Level, WordSetId = req.WordSetId, UserId = userId };
+        var word = new Word
+        {
+            Term = req.Term,
+            Definition = req.Definition,
+            DefinitionVietnamese = req.DefinitionVietnamese,
+            Example = req.Example,
+            Note = req.Note,
+            TypeOfWord = req.TypeOfWord,
+            Level = req.Level,
+            WordSetId = req.WordSetId,
+            UserId = userId
+        };
         _db.Words.Add(word);
         await _db.SaveChangesAsync();
         return CreatedAtAction(nameof(Get), new { id = word.Id }, _mapper.Map<WordDto>(word));
@@ -103,10 +114,14 @@ public class WordsController : ControllerBase
             if (wordSet == null) return BadRequest("WordSet not found or not owned by user");
         }
 
-        word.Term = req.Term;
-        word.Definition = req.Definition;
-        word.Level = req.Level;
-        word.WordSetId = req.WordSetId;
+    word.Term = req.Term;
+    word.Definition = req.Definition;
+    word.DefinitionVietnamese = req.DefinitionVietnamese;
+    word.Example = req.Example;
+    word.Note = req.Note;
+    word.TypeOfWord = req.TypeOfWord;
+    word.Level = req.Level;
+    word.WordSetId = req.WordSetId;
         await _db.SaveChangesAsync();
         return NoContent();
     }

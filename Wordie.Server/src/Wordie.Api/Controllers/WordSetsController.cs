@@ -2,12 +2,12 @@ using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using Wordie.Application.Common.Models;
 using Wordie.Application.Common.Handlers;
 using Wordie.Domain.Entities;
 using Wordie.Infrastructure.Persistence;
 using Wordie.Api.DTOs;
-using Wordie.Api.Services;
 
 namespace Wordie.Api.Controllers;
 
@@ -18,14 +18,11 @@ public class WordSetsController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IMapper _mapper;
     private readonly ILogger<WordSetsController> _logger;
-    private readonly IGeminiWordGenerator _geminiWordGenerator;
-
-    public WordSetsController(ApplicationDbContext db, IMapper mapper, ILogger<WordSetsController> logger, IGeminiWordGenerator geminiWordGenerator)
+    public WordSetsController(ApplicationDbContext db, IMapper mapper, ILogger<WordSetsController> logger)
     {
         _db = db;
         _mapper = mapper;
         _logger = logger;
-        _geminiWordGenerator = geminiWordGenerator;
     }
 
     [HttpGet]
@@ -201,7 +198,18 @@ public class WordSetsController : ControllerBase
         var wordSet = await _db.WordSets.FirstOrDefaultAsync(ws => ws.Id == id && ws.UserId == userId);
         if (wordSet == null) return BadRequest("WordSet not found or not owned by user");
 
-        var word = new Word { Term = req.Term, Definition = req.Definition, Level = req.Level, WordSetId = id, UserId = userId };
+        var word = new Word
+        {
+            Term = req.Term,
+            Definition = req.Definition,
+            DefinitionVietnamese = req.DefinitionVietnamese,
+            Example = req.Example,
+            Note = req.Note,
+            TypeOfWord = req.TypeOfWord,
+            Level = req.Level,
+            WordSetId = id,
+            UserId = userId
+        };
         _db.Words.Add(word);
         await _db.SaveChangesAsync();
 
@@ -229,6 +237,10 @@ public class WordSetsController : ControllerBase
             {
                 Term = (word.Term ?? string.Empty).Trim(),
                 Definition = (word.Definition ?? string.Empty).Trim(),
+                DefinitionVietnamese = (word.DefinitionVietnamese ?? string.Empty).Trim(),
+                Example = (word.Example ?? string.Empty).Trim(),
+                Note = (word.Note ?? string.Empty).Trim(),
+                TypeOfWord = word.TypeOfWord,
                 Level = word.Level
             })
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Term) && !string.IsNullOrWhiteSpace(entry.Definition))
@@ -236,6 +248,10 @@ public class WordSetsController : ControllerBase
             {
                 Term = entry.Term,
                 Definition = entry.Definition,
+                DefinitionVietnamese = string.IsNullOrWhiteSpace(entry.DefinitionVietnamese) ? null : entry.DefinitionVietnamese,
+                Example = string.IsNullOrWhiteSpace(entry.Example) ? null : entry.Example,
+                Note = string.IsNullOrWhiteSpace(entry.Note) ? null : entry.Note,
+                TypeOfWord = entry.TypeOfWord,
                 Level = Math.Clamp(entry.Level <= 0 ? 1 : entry.Level, 1, 10),
                 WordSetId = id,
                 UserId = userId
@@ -254,47 +270,4 @@ public class WordSetsController : ControllerBase
         return Ok(mapped);
     }
 
-    [HttpPost("{id}/words/gemini")]
-    [Authorize]
-    public async Task<ActionResult<IEnumerable<WordDto>>> CreateWordsWithGemini(Guid id, GenerateWordsWithGeminiRequest request, CancellationToken cancellationToken)
-    {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (userId == null) return Unauthorized();
-
-        var wordSet = await _db.WordSets.FirstOrDefaultAsync(ws => ws.Id == id && ws.UserId == userId, cancellationToken);
-        if (wordSet == null) return BadRequest("WordSet not found or not owned by user");
-
-        if (string.IsNullOrWhiteSpace(request.Prompt))
-        {
-            return BadRequest("Prompt is required");
-        }
-
-        var generated = await _geminiWordGenerator.GenerateWordsAsync(request.Prompt, request.DefaultLevel, request.MaxWords, cancellationToken);
-        if (generated.Count == 0)
-        {
-            return Ok(Array.Empty<WordDto>());
-        }
-
-        var words = generated
-            .Select(word => new Word
-            {
-                Term = word.Term.Trim(),
-                Definition = word.Definition.Trim(),
-                Level = Math.Clamp(word.Level <= 0 ? request.DefaultLevel ?? 1 : word.Level, 1, 10),
-                WordSetId = id,
-                UserId = userId
-            })
-            .ToList();
-
-        if (words.Count == 0)
-        {
-            return Ok(Array.Empty<WordDto>());
-        }
-
-        await _db.Words.AddRangeAsync(words, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        var mapped = _mapper.Map<IEnumerable<WordDto>>(words);
-        return Ok(mapped);
-    }
 }

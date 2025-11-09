@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
-import { z } from "zod";
-import type { ColumnDef } from "@tanstack/react-table";
 import {
   IconArrowRight,
+  IconColumns3,
   IconEdit,
   IconPlayerPlay,
   IconPlus,
+  IconSortDescending,
   IconStar,
   IconStarFilled,
   IconTrash,
@@ -22,25 +21,31 @@ import type {
   UpdateWordSetRequest,
   WordSetDto,
 } from "@/features/word-sets/types";
-import type {
-  FilterFieldConfig,
-  TableButton,
-} from "@/shared/components/data-table";
-import { ConfirmDialog } from "@/shared/components/confirm-dialog";
-import { DataTable } from "@/shared/components/data-table";
 import {
-  FormBuilder,
-  type FormFieldConfig,
-} from "@/shared/components/form/form-builder";
+  WordSetEditorDialog,
+  type WordSetFormValues,
+} from "@/features/word-sets/components/word-set-editor-dialog";
+import { ConfirmDialog } from "@/shared/components/confirm-dialog";
+import type { FilterFieldConfig, TableButton } from "@/shared/components/data-table";
 import { PageHeader, PageSection, PageShell } from "@/shared/components/page";
 import { Typography } from "@/shared/components/typography";
-import { ResponsiveDialog } from "@/shared/components/responsive-dialog";
 import type {
   FilterRule,
   PagedResponse,
   SearchRule,
   SortRule,
 } from "@/shared/types/pagination";
+import { FilterGrid } from "@/shared/components/filter";
+import { WordSetCard } from "@/features/word-sets/components/word-set-card";
+import { Button } from "@/shared/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
+import { Label } from "@/shared/components/ui/label";
 
 type WordSetsResponseState = {
   items: WordSetDto[];
@@ -54,15 +59,6 @@ const INITIAL_STATE: WordSetsResponseState = {
   totalPages: 1,
 };
 
-type WordSetTableRow = {
-  id: string;
-  title: string;
-  description?: string;
-  createdAt: string;
-  isFavorite: boolean;
-  wordSet: WordSetDto;
-};
-
 type DialogState = {
   open: boolean;
   mode: "create" | "edit";
@@ -73,22 +69,6 @@ type DeleteState = {
   open: boolean;
   wordSet: WordSetDto | null;
 };
-
-const wordSetFormSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Tiêu đề là bắt buộc")
-    .max(120, "Tiêu đề tối đa 120 ký tự"),
-  description: z
-    .string()
-    .trim()
-    .max(500, "Mô tả tối đa 500 ký tự")
-    .optional(),
-  isFavorite: z.boolean().default(false),
-});
-
-type WordSetFormValues = z.infer<typeof wordSetFormSchema>;
 
 const DEFAULT_DIALOG_STATE: DialogState = {
   open: false,
@@ -234,34 +214,6 @@ export const WordSetsPage = () => {
     setDeleteState(DEFAULT_DELETE_STATE);
   };
 
-  const wordSetFormFields = useMemo<FormFieldConfig<WordSetFormValues>[]>(
-    () => [
-      {
-        name: "title",
-        label: "Tiêu đề",
-        type: "text",
-        placeholder: "Nhập tiêu đề",
-        required: true,
-        helperText: "Tên hiển thị trong danh sách word set.",
-      },
-      {
-        name: "description",
-        label: "Mô tả",
-        type: "textarea",
-        placeholder: "Mô tả ngắn gọn cho word set",
-        rows: 4,
-        helperText: "Tùy chọn; hỗ trợ bạn ghi chú nội dung bộ từ.",
-      },
-      {
-        name: "isFavorite",
-        label: "Đánh dấu là yêu thích",
-        type: "checkbox",
-        description: "Hiển thị bộ từ trong danh sách yêu thích.",
-      },
-    ],
-    []
-  );
-
   const formDefaultValues = useMemo<WordSetFormValues>(
     () => ({
       title: dialogState.wordSet?.Title ?? "",
@@ -271,7 +223,8 @@ export const WordSetsPage = () => {
     [dialogState.wordSet]
   );
 
-  const submitLabel = dialogState.mode === "create" ? "Tạo" : "Lưu";
+  const dialogMode = dialogState.mode;
+  const submitLabel = dialogMode === "create" ? "Tạo" : "Lưu";
 
   const handleFormSubmit = async (values: WordSetFormValues) => {
     if (formSubmitting) return;
@@ -279,7 +232,7 @@ export const WordSetsPage = () => {
     setFormSubmitting(true);
 
     try {
-      if (dialogState.mode === "create") {
+      if (dialogMode === "create") {
         const payload: CreateWordSetRequest = {
           title: values.title.trim(),
           description: values.description?.trim() || undefined,
@@ -327,62 +280,6 @@ export const WordSetsPage = () => {
     }
   };
 
-  const tableData: WordSetTableRow[] = useMemo(
-    () =>
-      state.items.map((item) => ({
-        id: item.Id,
-        title: item.Title,
-        description: item.Description ?? "",
-        createdAt: item.CreatedAt,
-        isFavorite: item.IsFavorite,
-        wordSet: item,
-      })),
-    [state.items]
-  );
-
-  const columns = useMemo<ColumnDef<WordSetTableRow>[]>(() => {
-    return [
-      {
-        id: "Title",
-        header: "Tiêu đề",
-        accessorFn: (row) => row.title,
-        cell: ({ row }) => (
-          <div className="flex max-w-64 flex-col gap-1">
-            <Typography className="truncate font-medium text-foreground" title={row.original.title}>
-              {row.original.title}
-            </Typography>
-            {row.original.description ? (
-              <Typography variant="muted" className="truncate" title={row.original.description}>
-                {row.original.description}
-              </Typography>
-            ) : null}
-          </div>
-        ),
-      },
-      {
-        id: "Description",
-        header: "Mô tả",
-        accessorFn: (row) => row.description ?? "",
-        enableSorting: false,
-        cell: ({ row }) => (
-          <Typography variant="muted" className="max-w-64 truncate">
-            {row.original.description || "—"}
-          </Typography>
-        ),
-      },
-      {
-        id: "CreatedAt",
-        header: "Ngày tạo",
-        accessorFn: (row) => row.createdAt,
-        cell: ({ row }) => (
-          <Typography variant="muted" className="whitespace-nowrap">
-            {format(new Date(row.original.createdAt), "dd/MM/yyyy")}
-          </Typography>
-        ),
-      },
-    ];
-  }, []);
-
   const filterFields = useMemo<FilterFieldConfig[]>(
     () => [
       {
@@ -405,34 +302,25 @@ export const WordSetsPage = () => {
 
   const searchableColumns = useMemo(() => ["Title", "Description"], []);
 
+  const sortOptions = useMemo(
+    () => [
+      { label: "Mới nhất", value: "CreatedAt|Desc" },
+      { label: "Cũ nhất", value: "CreatedAt|Asc" },
+      { label: "Tên A-Z", value: "Title|Asc" },
+      { label: "Tên Z-A", value: "Title|Desc" },
+    ],
+    []
+  );
+
+  const [selectedSortOption, setSelectedSortOption] = useState<string>(
+    () => sortOptions[0]?.value ?? ""
+  );
+  const [gridColumns, setGridColumns] = useState<number>(3);
+
   const handleFiltersChange = useCallback((nextFilters: FilterRule[]) => {
     setFilters(nextFilters);
     setPage(1);
   }, []);
-
-  const handleSortChange = useCallback(
-    (nextSorts: { field: string; direction: "Asc" | "Desc" }[]) => {
-      const mapped: SortRule[] = nextSorts.map((sort) => ({
-        Field: sort.field,
-        Direction: sort.direction,
-      }));
-      setSorts((current) => {
-        if (
-          current.length === mapped.length &&
-          current.every(
-            (item, index) =>
-              item.Field === mapped[index]?.Field &&
-              item.Direction === mapped[index]?.Direction
-          )
-        ) {
-          return current;
-        }
-
-        return mapped;
-      });
-    },
-    []
-  );
 
   const handleSearchChange = useCallback(
     (nextSearch: SearchRule | undefined) => {
@@ -441,6 +329,26 @@ export const WordSetsPage = () => {
     },
     []
   );
+
+  useEffect(() => {
+    if (!sortOptions.length) {
+      setSorts([]);
+      return;
+    }
+
+    if (!selectedSortOption || !sortOptions.some((option) => option.value === selectedSortOption)) {
+      const fallback = sortOptions[0]?.value;
+      if (fallback && fallback !== selectedSortOption) {
+        setSelectedSortOption(fallback);
+      } else {
+        setSorts([]);
+      }
+      return;
+    }
+
+    const [field, direction] = selectedSortOption.split("|") as [string, SortRule["Direction"]];
+    setSorts([{ Field: field, Direction: direction }]);
+  }, [selectedSortOption, sortOptions]);
 
   const pagination = useMemo(
     () => ({
@@ -459,7 +367,9 @@ export const WordSetsPage = () => {
     [page, pageSize, state.totalPages, state.totalCount]
   );
 
-  const toolbarButtons = useMemo<TableButton<WordSetTableRow>[]>(
+  type WordSetCardItem = WordSetDto & { id: string };
+
+  const toolbarButtons = useMemo<TableButton<WordSetCardItem>[]>(
     () => [
       {
         key: "create",
@@ -483,16 +393,13 @@ export const WordSetsPage = () => {
         variant: "primary",
         onClick: (selected) => {
           void (async () => {
-            for (const row of selected.filter(
-              (item) => !item.wordSet.IsFavorite
-            )) {
-              await handleToggleFavorite(row.wordSet, true);
+            for (const row of selected.filter((item) => !item.IsFavorite)) {
+              await handleToggleFavorite(row, true);
             }
           })();
         },
         disabled: (selected) =>
-          selected.length === 0 ||
-          selected.every((row) => row.wordSet.IsFavorite),
+          selected.length === 0 || selected.every((row) => row.IsFavorite),
       },
       {
         key: "unfavorite",
@@ -504,16 +411,13 @@ export const WordSetsPage = () => {
         variant: "secondary",
         onClick: (selected) => {
           void (async () => {
-            for (const row of selected.filter(
-              (item) => item.wordSet.IsFavorite
-            )) {
-              await handleToggleFavorite(row.wordSet, false);
+            for (const row of selected.filter((item) => item.IsFavorite)) {
+              await handleToggleFavorite(row, false);
             }
           })();
         },
         disabled: (selected) =>
-          selected.length === 0 ||
-          selected.every((row) => !row.wordSet.IsFavorite),
+          selected.length === 0 || selected.every((row) => !row.IsFavorite),
       },
       {
         key: "study",
@@ -540,7 +444,7 @@ export const WordSetsPage = () => {
         onClick: (selected) => {
           const target = selected[0];
           if (!target) return;
-          openEditDialog(target.wordSet);
+          openEditDialog(target);
         },
         disabled: (selected) => selected.length !== 1,
       },
@@ -570,7 +474,7 @@ export const WordSetsPage = () => {
         onClick: (selected) => {
           const target = selected[0];
           if (!target) return;
-          openDeleteDialog(target.wordSet);
+          openDeleteDialog(target);
         },
         disabled: (selected) => selected.length === 0,
       },
@@ -582,6 +486,74 @@ export const WordSetsPage = () => {
       openDeleteDialog,
       openEditDialog,
     ]
+  );
+
+  const gridItems = useMemo<WordSetCardItem[]>(
+    () => state.items.map((item) => ({ ...item, id: item.Id })),
+    [state.items]
+  );
+
+  const toolbarStartContent = useMemo(
+    () => (
+      <Typography variant="muted" className="text-xs text-muted-foreground md:text-sm">
+        {state.totalCount.toLocaleString()} bộ từ vựng
+      </Typography>
+    ),
+    [state.totalCount]
+  );
+
+  const toolbarEndContent = useMemo(
+    () => (
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Label
+            htmlFor="word-set-sort"
+            className="hidden items-center gap-1 text-xs font-medium text-muted-foreground md:flex"
+          >
+            <IconSortDescending className="size-4" />
+            Sắp xếp
+          </Label>
+          <Select value={selectedSortOption} onValueChange={setSelectedSortOption}>
+            <SelectTrigger id="word-set-sort" size="sm" className="w-[140px]">
+              <SelectValue placeholder="Sắp xếp" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {sortOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Label
+            htmlFor="word-set-columns"
+            className="hidden items-center gap-1 text-xs font-medium text-muted-foreground md:flex"
+          >
+            <IconColumns3 className="size-4" />
+            Cột
+          </Label>
+          <Select
+            value={`${gridColumns}`}
+            onValueChange={(value) => setGridColumns(Number(value))}
+          >
+            <SelectTrigger id="word-set-columns" size="sm" className="w-[92px]">
+              <SelectValue placeholder={gridColumns} />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {[2, 3, 4].map((option) => (
+                <SelectItem key={option} value={`${option}`}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    ),
+    [gridColumns, selectedSortOption, setSelectedSortOption, sortOptions]
   );
 
   return (
@@ -597,51 +569,74 @@ export const WordSetsPage = () => {
       ) : null}
 
       <PageSection>
-        <DataTable
-          data={tableData}
-          columns={columns}
+        <FilterGrid
+          data={gridItems}
+          renderItem={(item, { selected }) => (
+            <WordSetCard
+              wordSet={item}
+              highlight={selected}
+              onClick={() => navigate(`/wordsets/${item.Id}`)}
+              onToggleFavorite={(nextState) => {
+                void handleToggleFavorite(item, nextState);
+              }}
+              onStudy={() => navigate(`/study?wordSetId=${item.Id}`)}
+              footer={(
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                    onClick={() => openEditDialog(item)}
+                  >
+                    <IconEdit className="size-4" />
+                    Sửa
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1 text-destructive"
+                    onClick={() => openDeleteDialog(item)}
+                  >
+                    <IconTrash className="size-4" />
+                    Xóa
+                  </Button>
+                </div>
+              )}
+            />
+          )}
           loading={loading}
-          enableTabs={false}
-          enableDragAndDrop={false}
           selectable
           buttons={toolbarButtons}
           groupToolbarButtons={false}
-          pagination={pagination}
+          toolbarStartContent={toolbarStartContent}
+          filters={filters}
+          filterFields={filterFields}
           onFiltersChange={handleFiltersChange}
-          onSortChange={handleSortChange}
           onSearchChange={handleSearchChange}
           searchableColumns={searchableColumns}
-          filterFields={filterFields}
+          searchPlaceholder="Tìm kiếm theo tiêu đề hoặc mô tả..."
+          toolbarEndContent={toolbarEndContent}
+          columns={gridColumns}
+          pagination={pagination}
         />
       </PageSection>
 
-      <ResponsiveDialog
+      <WordSetEditorDialog
         open={dialogState.open}
+        mode={dialogMode}
+        submitting={formSubmitting}
+        defaultValues={formDefaultValues}
+        wordSet={dialogState.wordSet}
+        onSubmit={handleFormSubmit}
+        onCancel={closeDialog}
         onOpenChange={(nextOpen) => {
-          if (nextOpen) return;
-          if (formSubmitting) return;
-          closeDialog();
+          if (!nextOpen) {
+            if (formSubmitting) return;
+            closeDialog();
+          }
         }}
-        title=
-          {dialogState.mode === "create"
-            ? "Tạo word set mới"
-            : "Chỉnh sửa word set"}
-        desktopContentClassName="max-w-lg"
-      >
-        <FormBuilder<WordSetFormValues>
-          key={dialogState.wordSet?.Id ?? dialogState.mode}
-          className="pt-2"
-          fields={wordSetFormFields}
-          defaultValues={formDefaultValues}
-          onSubmit={handleFormSubmit}
-          onCancel={closeDialog}
-          submitting={formSubmitting}
-          submitLabel={submitLabel}
-          cancelLabel="Hủy"
-          columns={1}
-          schema={wordSetFormSchema}
-        />
-      </ResponsiveDialog>
+        submitLabel={submitLabel}
+      />
       <ConfirmDialog
         open={deleteState.open}
         title="Xác nhận xóa"

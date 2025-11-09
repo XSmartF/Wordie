@@ -77,6 +77,7 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu"
 import { Input } from "@/shared/components/ui/input"
+import { ComboBox } from "@/shared/components/combobox"
 import { Label } from "@/shared/components/ui/label"
 import {
   Select,
@@ -127,6 +128,7 @@ import type {
   SearchRule,
   SortDirection,
 } from "@/shared/types/pagination"
+import { Skeleton } from "./ui/skeleton"
 
 export interface TableButton<T> {
   key: string
@@ -452,8 +454,6 @@ function FilterPanel<T extends TableRowBase>({
     | { min?: string; max?: string }
     | { from?: string; to?: string }
 
-  const CLEAR_SELECT_VALUE = "__all__"
-
   const [fieldValues, setFieldValues] = React.useState<Record<string, FieldValue>>({})
 
   const fieldValuesEqual = React.useCallback(
@@ -657,7 +657,7 @@ function FilterPanel<T extends TableRowBase>({
   }
 
   const handleEnumChange = (field: string, value: string) => {
-    if (value === CLEAR_SELECT_VALUE) {
+  if (!value) {
       setFieldValues((previous) => {
         const next = { ...previous }
         delete next[field]
@@ -952,28 +952,25 @@ function FilterPanel<T extends TableRowBase>({
                   </div>
                 )
               }
-              case "Enum":
+              case "Enum": {
+                const comboItems = fieldConfig.options ?? []
+                const comboValue = typeof currentValue === "string" ? currentValue : ""
+
                 return (
                   <div key={fieldConfig.field} className="grid gap-2">
                     <Label htmlFor={controlId}>{fieldLabel}</Label>
-                    <Select
-                      value={typeof currentValue === "string" ? currentValue : CLEAR_SELECT_VALUE}
-                      onValueChange={(value) => handleEnumChange(fieldConfig.field, value)}
-                    >
-                      <SelectTrigger id={controlId}>
-                        <SelectValue placeholder={fieldConfig.placeholder ?? `Filter by ${fieldLabel}`} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={CLEAR_SELECT_VALUE}>All</SelectItem>
-                        {fieldConfig.options?.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <ComboBox
+                      id={controlId}
+                      items={comboItems}
+                      value={comboValue}
+                      onChange={(value) => {
+                        handleEnumChange(fieldConfig.field, value)
+                      }}
+                      placeholder={fieldConfig.placeholder ?? `Filter by ${fieldLabel}`}
+                    />
                   </div>
                 )
+              }
               case "MultiSelect":
                 return (
                   <div key={fieldConfig.field} className="grid gap-2">
@@ -1559,7 +1556,7 @@ export function DataTable<T extends TableRowBase>({
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
         {enableDragAndDrop ? (
           <DndContext
             collisionDetection={closestCenter}
@@ -1569,7 +1566,7 @@ export function DataTable<T extends TableRowBase>({
             id={sortableId}
           >
             <Table>
-              <TableHeader className="bg-muted sticky top-0 z-10">
+              <TableHeader className="sticky top-0 z-10 bg-gray-50/70 text-xs uppercase tracking-wide text-gray-700/80 backdrop-blur-sm dark:bg-gray-900/80 dark:text-gray-200/80">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => {
@@ -1600,14 +1597,15 @@ export function DataTable<T extends TableRowBase>({
               </TableHeader>
               <TableBody className="**:data-[slot=table-cell]:first:w-8">
                 {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={resolvedColumns.length} className="h-24 text-center">
-                      <div className="flex items-center justify-center">
-                        <IconLoader className="h-4 w-4 animate-spin mr-2" />
-                        Loading...
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  Array.from({ length: Math.min(table.getState().pagination.pageSize, 5) }).map((_, index) => (
+                    <TableRow key={`skeleton-${index}`}>
+                      {resolvedColumns.map((_, colIndex) => (
+                        <TableCell key={`skeleton-cell-${index}-${colIndex}`} className="h-12">
+                          <Skeleton className="h-4 w-full" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
                 ) : table.getRowModel().rows?.length ? (
                   <SortableContext
                     items={dataIds}
@@ -1632,7 +1630,7 @@ export function DataTable<T extends TableRowBase>({
           </DndContext>
         ) : (
           <Table>
-            <TableHeader className="bg-muted sticky top-0 z-10">
+            <TableHeader className="sticky top-0 z-10 bg-gray-50/70 text-xs uppercase tracking-wide text-gray-700/80 backdrop-blur-sm dark:bg-gray-900/80 dark:text-gray-200/80">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
@@ -1662,15 +1660,16 @@ export function DataTable<T extends TableRowBase>({
               ))}
             </TableHeader>
             <TableBody className="**:data-[slot=table-cell]:first:w-8">
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={resolvedColumns.length} className="h-24 text-center">
-                    <div className="flex items-center justify-center">
-                      <IconLoader className="h-4 w-4 animate-spin mr-2" />
-                      Loading...
-                    </div>
-                  </TableCell>
-                </TableRow>
+{loading ? (
+                Array.from({ length: Math.min(table.getState().pagination.pageSize, 5) }).map((_, index) => (
+                  <TableRow key={`skeleton-${index}`}>
+                    {resolvedColumns.map((_, colIndex) => (
+                      <TableCell key={`skeleton-cell-${index}-${colIndex}`} className="h-12">
+                        <Skeleton className="h-4 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
               ) : table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row) => (
                   <TableRow

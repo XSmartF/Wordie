@@ -11,6 +11,10 @@ export interface WordWithProgress {
   WordSetId?: string
   Term: string
   Definition: string
+  DefinitionVietnamese?: string | null
+  Example?: string | null
+  TypeOfWord?: string | null
+  Note?: string | null
   Level: number
   CreatedAt: string
   EaseFactor?: number
@@ -41,6 +45,10 @@ export interface UpdateWordSetPayload {
 export interface BulkCreateWordPayload {
   term: string
   definition: string
+  definitionVietnamese?: string | null
+  example?: string | null
+  typeOfWord?: string | null
+  note?: string | null
   level: number
 }
 
@@ -48,4 +56,14 @@ export interface GeminiWordsPayload {
   prompt: string
   defaultLevel?: number
   maxWords?: number
+}
+
+export interface GeminiPreviewWord {
+  Term: string
+  Definition: string
+  DefinitionVietnamese?: string | null
+  Example?: string | null
+  TypeOfWord?: string | null
+  Note?: string | null
+  Level: number
 }

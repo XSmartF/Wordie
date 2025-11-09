@@ -37,6 +37,8 @@ Migrations/*.cs
 # Secrets
 appsettings.Development.json
 secrets.json
+.env
+.env.*
 
 # Build
 *.exe

@@ -118,6 +118,29 @@ foreach (var email in userEmails)
     }
 }
 
+var typeOfWordValues = Enum.GetValues<Wordie.Domain.Enums.TypeOfWord>();
+string[] vietnameseDefinitionSamples = new[]
+{
+    "(Danh từ) - Sự kiện xảy ra",
+    "(Động từ) - Hành động thực hiện thường xuyên",
+    "(Tính từ) - Mô tả đặc điểm nổi bật",
+    "(Trạng từ) - Cách thức thực hiện hành động",
+    "(Giới từ) - Chỉ mối quan hệ vị trí",
+    "(Liên từ) - Nối hai mệnh đề",
+    "(Thán từ) - Thể hiện cảm xúc mạnh",
+    "(Đại từ) - Thay thế cho danh từ",
+    "(Cấu trúc ngữ pháp) - Mẫu câu cần ghi nhớ",
+};
+
+string[] noteSamples = new[]
+{
+    "Ghi nhớ nhanh: sử dụng trong ngữ cảnh trang trọng.",
+    "Lưu ý: thường gặp trong bài TOEIC phần nghe.",
+    "Tip: kết hợp với giới từ 'for'.",
+    "Nhắc nhở: chú ý trọng âm ở âm tiết thứ hai.",
+    "Ghi chú: dạng số nhiều thêm 'es'.",
+};
+
 // For each user, generate WordSets and Words
 foreach (var user in users)
 {
@@ -141,7 +164,11 @@ foreach (var user in users)
     var wordFaker = new Faker<Word>()
         .RuleFor(w => w.Id, f => Guid.NewGuid())
         .RuleFor(w => w.Term, f => f.Lorem.Word())
-        .RuleFor(w => w.Definition, f => f.Lorem.Sentence())
+        .RuleFor(w => w.Definition, f => f.Lorem.Sentence(10).TrimEnd('.'))
+        .RuleFor(w => w.DefinitionVietnamese, f => f.PickRandom(vietnameseDefinitionSamples))
+        .RuleFor(w => w.Example, f => f.Lorem.Sentence(12))
+        .RuleFor(w => w.Note, f => f.Random.Bool(0.35f) ? f.PickRandom(noteSamples) : null)
+        .RuleFor(w => w.TypeOfWord, f => f.PickRandom(typeOfWordValues))
         .RuleFor(w => w.Level, f => f.Random.Int(1, 5))
         .RuleFor(w => w.WordSetId, f => f.PickRandom(setIds))
         .RuleFor(w => w.UserId, () => user.Id)

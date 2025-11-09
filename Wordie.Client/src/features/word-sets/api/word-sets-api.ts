@@ -1,4 +1,4 @@
-import type { WordWithProgress } from "@/core/word-sets/types";
+import type { GeminiPreviewWord, WordWithProgress } from "@/core/word-sets/types";
 import { wordSetsService } from "@/core/word-sets/service";
 import type {
   BulkCreateWordInput,
@@ -49,11 +49,10 @@ export const wordSetsApi = {
     return wordSetsService.createWordsBulk(id, words);
   },
 
-  createWordsWithGemini: (
-    id: string,
+  generateWordsWithGemini: (
     payload: GeminiWordsRequest,
-  ): Promise<WordWithProgress[]> => {
-    return wordSetsService.createWordsWithGemini(id, payload);
+  ): Promise<GeminiPreviewWord[]> => {
+    return wordSetsService.generateWordsWithGemini(payload);
   },
 
   updateFavorite: (id: string, isFavorite: boolean): Promise<WordSetDto> => {

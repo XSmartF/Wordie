@@ -1,11 +1,11 @@
-import { useEffect } from "react";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-
 import { extractErrorMessage } from "@/shared/api/http-client";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
+import {
+  FormBuilder,
+  type FormFieldConfig,
+} from "@/shared/components/form/form-builder";
+
+import { useMemo } from "react";
 
 import { useLoginMutation } from "../hooks/use-login";
 import { loginSchema, type LoginFormValues } from "../schemas";
@@ -21,11 +21,38 @@ const defaultLoginValues: LoginFormValues = {
 };
 
 export function LoginForm({ defaultValues, onSuccess }: LoginFormProps) {
-  const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { ...defaultLoginValues, ...defaultValues },
-    mode: "onChange",
-  });
+  const mergedDefaults = useMemo(
+    () => ({ ...defaultLoginValues, ...defaultValues }),
+    [defaultValues]
+  );
+
+  const fields = useMemo<FormFieldConfig<LoginFormValues>[]>(
+    () => [
+      {
+        name: "email",
+        label: "Email",
+        type: "text",
+        placeholder: "Email",
+        required: true,
+        autoComplete: "email",
+        inputProps: {
+          type: "email",
+        },
+      },
+      {
+        name: "password",
+        label: "Password",
+        type: "text",
+        placeholder: "Password",
+        required: true,
+        autoComplete: "current-password",
+        inputProps: {
+          type: "password",
+        },
+      },
+    ],
+    []
+  );
 
   const loginMutation = useLoginMutation({
     onSuccess: () => {
@@ -33,58 +60,31 @@ export function LoginForm({ defaultValues, onSuccess }: LoginFormProps) {
     },
   });
 
-  useEffect(() => {
-    if (defaultValues) {
-      form.reset({ ...defaultLoginValues, ...defaultValues });
-    }
-  }, [defaultValues, form]);
-
-  const handleSubmit = form.handleSubmit((values) => {
-    loginMutation.mutate(values);
-  });
-
   const isSubmitting = loginMutation.isPending;
   const serverError = loginMutation.error ? extractErrorMessage(loginMutation.error) : null;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
-        <Input
-          id="email"
-          type="email"
-          autoComplete="email"
-          disabled={isSubmitting}
-          aria-invalid={form.formState.errors.email ? true : undefined}
-          {...form.register("email")}
-        />
-        {form.formState.errors.email ? (
-          <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
-        ) : null}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          disabled={isSubmitting}
-          aria-invalid={form.formState.errors.password ? true : undefined}
-          {...form.register("password")}
-        />
-        {form.formState.errors.password ? (
-          <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
-        ) : null}
-      </div>
-
-      {serverError ? (
-        <p className="text-sm text-destructive">{serverError}</p>
-      ) : null}
-
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Signing in..." : "Sign in"}
-      </Button>
-    </form>
+    <FormBuilder<LoginFormValues>
+      fields={fields}
+      defaultValues={mergedDefaults}
+      onSubmit={(values) => loginMutation.mutate(values)}
+      submitting={isSubmitting}
+      schema={loginSchema}
+      formOptions={{ mode: "onChange" }}
+      renderFooter={(formInstance) => (
+        <div className="space-y-4">
+          {serverError ? (
+            <p className="text-sm text-destructive">{serverError}</p>
+          ) : null}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isSubmitting || !formInstance.formState.isValid}
+          >
+            {isSubmitting ? "Signing in..." : "Sign in"}
+          </Button>
+        </div>
+      )}
+    />
   );
 }

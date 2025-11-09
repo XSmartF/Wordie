@@ -1,10 +1,8 @@
 import { type ComponentProps } from "react"
 import {
   IconDashboard,
-  IconHelp,
   IconInnerShadowTop,
   IconListDetails,
-  IconSearch,
   IconSettings,
   IconStar,
 } from "@tabler/icons-react"
@@ -42,18 +40,8 @@ const navMain = [
 const navSecondary = [
   {
     title: "Settings",
-    url: "#",
+    url: "/settings",
     icon: IconSettings,
-  },
-  {
-    title: "Get Help",
-    url: "#",
-    icon: IconHelp,
-  },
-  {
-    title: "Search",
-    url: "#",
-    icon: IconSearch,
   },
 ]
 
@@ -80,8 +68,10 @@ export function AppSidebar({ user, onLogout, isUserLoading, ...props }: AppSideb
               asChild
             >
               <Link to="/">
-                <IconInnerShadowTop className="size-5!" />
-                <span className="text-base font-semibold">Wordie</span>
+                <IconInnerShadowTop className="size-5! text-indigo-500" />
+                <span className="text-base font-semibold text-indigo-600 dark:text-indigo-200">
+                  Wordie
+                </span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

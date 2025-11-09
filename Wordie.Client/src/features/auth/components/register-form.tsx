@@ -1,10 +1,12 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useCallback, useMemo, useRef } from "react";
+import type { UseFormReturn } from "react-hook-form";
 
 import { extractErrorMessage } from "@/shared/api/http-client";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
+import {
+  FormBuilder,
+  type FormFieldConfig,
+} from "@/shared/components/form/form-builder";
 
 import { useRegisterMutation } from "../hooks/use-register";
 import { registerSchema, type RegisterFormValues } from "../schemas";
@@ -20,21 +22,49 @@ const defaultRegisterValues: RegisterFormValues = {
 };
 
 export function RegisterForm({ onSuccess }: RegisterFormProps) {
-  const form = useForm<RegisterFormValues>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: defaultRegisterValues,
-    mode: "onChange",
-  });
+  const formRef = useRef<UseFormReturn<RegisterFormValues> | null>(null);
+
+  const fields = useMemo<FormFieldConfig<RegisterFormValues>[]>(
+    () => [
+      {
+        name: "email",
+        label: "Email",
+        type: "text",
+        placeholder: "Email",
+        required: true,
+        autoComplete: "email",
+        inputProps: {
+          type: "email",
+        },
+      },
+      {
+        name: "displayName",
+        label: "Display name",
+        type: "text",
+        placeholder: "Display name",
+        required: true,
+        autoComplete: "name",
+      },
+      {
+        name: "password",
+        label: "Password",
+        type: "text",
+        placeholder: "Password",
+        required: true,
+        autoComplete: "new-password",
+        inputProps: {
+          type: "password",
+        },
+      },
+    ],
+    []
+  );
 
   const registerMutation = useRegisterMutation({
     onSuccess: (values) => {
       onSuccess?.(values);
-      form.reset(defaultRegisterValues);
+      formRef.current?.reset(defaultRegisterValues);
     },
-  });
-
-  const handleSubmit = form.handleSubmit((values) => {
-    registerMutation.mutate(values);
   });
 
   const isSubmitting = registerMutation.isPending;
@@ -42,66 +72,33 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
     ? extractErrorMessage(registerMutation.error)
     : null;
 
+  const handleFormReady = useCallback((form: UseFormReturn<RegisterFormValues>) => {
+    formRef.current = form;
+  }, []);
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="space-y-2">
-        <Label htmlFor="register-email">Email</Label>
-        <Input
-          id="register-email"
-          type="email"
-          autoComplete="email"
-          disabled={isSubmitting}
-          aria-invalid={form.formState.errors.email ? true : undefined}
-          {...form.register("email")}
-        />
-        {form.formState.errors.email ? (
-          <p className="text-sm text-destructive">
-            {form.formState.errors.email.message}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="displayName">Display name</Label>
-        <Input
-          id="displayName"
-          type="text"
-          autoComplete="name"
-          disabled={isSubmitting}
-          aria-invalid={form.formState.errors.displayName ? true : undefined}
-          {...form.register("displayName")}
-        />
-        {form.formState.errors.displayName ? (
-          <p className="text-sm text-destructive">
-            {form.formState.errors.displayName.message}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="register-password">Password</Label>
-        <Input
-          id="register-password"
-          type="password"
-          autoComplete="new-password"
-          disabled={isSubmitting}
-          aria-invalid={form.formState.errors.password ? true : undefined}
-          {...form.register("password")}
-        />
-        {form.formState.errors.password ? (
-          <p className="text-sm text-destructive">
-            {form.formState.errors.password.message}
-          </p>
-        ) : null}
-      </div>
-
-      {serverError ? (
-        <p className="text-sm text-destructive">{serverError}</p>
-      ) : null}
-
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Creating account..." : "Create account"}
-      </Button>
-    </form>
+    <FormBuilder<RegisterFormValues>
+      fields={fields}
+      defaultValues={defaultRegisterValues}
+      schema={registerSchema}
+      submitting={isSubmitting}
+      formOptions={{ mode: "onChange" }}
+      onSubmit={(values) => registerMutation.mutate(values)}
+      onFormReady={handleFormReady}
+      renderFooter={(formInstance) => (
+        <div className="space-y-4">
+          {serverError ? (
+            <p className="text-sm text-destructive">{serverError}</p>
+          ) : null}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isSubmitting || !formInstance.formState.isValid}
+          >
+            {isSubmitting ? "Creating account..." : "Create account"}
+          </Button>
+        </div>
+      )}
+    />
   );
 }

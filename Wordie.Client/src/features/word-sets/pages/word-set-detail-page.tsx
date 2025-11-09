@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 import {
-  IconArrowLeft,
   IconChevronLeft,
   IconChevronRight,
   IconEdit,
@@ -19,14 +18,20 @@ import { format, formatDistanceToNow } from "date-fns";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { wordSetsApi } from "@/features/word-sets/api/word-sets-api";
-import type { BulkCreateWordInput, GeminiWordsRequest, WordDto, WordSetDto } from "@/features/word-sets/types";
+import type {
+  BulkCreateWordInput,
+  GeminiPreviewWord,
+  GeminiWordsRequest,
+  WordDto,
+  WordSetDto,
+} from "@/features/word-sets/types";
 import type {
   FilterRule,
   PagedResponse,
   SearchRule,
   SortDirection,
 } from "@/shared/types/pagination";
-import { PageHeader, PageSection, PageShell } from "@/shared/components/page";
+import { PageSection, PageShell } from "@/shared/components/page";
 import { Typography } from "@/shared/components/typography";
 import { Button } from "@/shared/components/ui/button";
 import { SplitButton } from "@/shared/components/ui/split-button";
@@ -38,6 +43,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
+import { Badge } from "@/shared/components/ui/badge";
 import { ResponsiveDialog } from "@/shared/components/responsive-dialog";
 import {
   Empty,
@@ -54,15 +60,21 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import {
   DataTable,
   type FilterFieldConfig,
+  type FilterFieldOption,
   type TableButton,
 } from "@/shared/components/data-table";
 import { FormBuilder, type FormFieldConfig } from "@/shared/components/form/form-builder";
 import { toast } from "sonner";
+import { ScrollArea } from "@/shared/components/ui/scroll-area";
 
 const FLASHCARD_PAGE_SIZE = 100;
 const COLUMN_FIELD_MAP = {
   header: "Term",
   definition: "Definition",
+  definitionVietnamese: "DefinitionVietnamese",
+  example: "Example",
+  typeOfWord: "TypeOfWord",
+  note: "Note",
   level: "Level",
   createdAt: "CreatedAt",
 } as const;
@@ -74,6 +86,27 @@ const LEVEL_FILTER_OPTIONS = Array.from({ length: 5 }, (_, index) => {
     value: level.toString(),
   };
 });
+
+const TYPE_OF_WORD_FILTER_OPTIONS: FilterFieldOption[] = [
+  { label: "Noun", value: "Noun" },
+  { label: "Pronoun", value: "Pronoun" },
+  { label: "Verb", value: "Verb" },
+  { label: "Adjective", value: "Adjective" },
+  { label: "Adverb", value: "Adverb" },
+  { label: "Preposition", value: "Preposition" },
+  { label: "Conjunction", value: "Conjunction" },
+  { label: "Interjection", value: "Interjection" },
+  { label: "Grammar Structure", value: "GrammarStructure" },
+];
+
+const WORD_TABLE_SEARCH_COLUMNS: string[] = [
+  "header",
+  "definition",
+  "definitionVietnamese",
+  "example",
+  "typeOfWord",
+  "note",
+];
 
 const WORD_FILTER_FIELDS: FilterFieldConfig[] = [
   {
@@ -87,6 +120,31 @@ const WORD_FILTER_FIELDS: FilterFieldConfig[] = [
     label: "Definition",
     type: "Text",
     placeholder: "Search by definition",
+  },
+  {
+    field: "definitionVietnamese",
+    label: "Definition (VI)",
+    type: "Text",
+    placeholder: "Tìm theo nghĩa tiếng Việt",
+  },
+  {
+    field: "example",
+    label: "Example",
+    type: "Text",
+    placeholder: "Search by example",
+  },
+  {
+    field: "typeOfWord",
+    label: "Type of Word",
+    type: "Enum",
+    operator: "Equal",
+    options: TYPE_OF_WORD_FILTER_OPTIONS,
+  },
+  {
+    field: "note",
+    label: "Note",
+    type: "Text",
+    placeholder: "Search by note",
   },
   {
     field: "level",
@@ -103,6 +161,8 @@ const WORD_FILTER_FIELDS: FilterFieldConfig[] = [
   },
 ];
 
+
+
 type WordFlashcard = Pick<WordDto, "Id" | "Term" | "Definition"> & {
   CreatedAt: string;
 };
@@ -113,6 +173,10 @@ type WordRow = {
   id: string;
   header: string;
   definition: string;
+  definitionVietnamese: string;
+  example: string;
+  typeOfWord: string;
+  note: string;
   level: number;
   createdAt: string;
   original: WordDto;
@@ -130,6 +194,56 @@ const singleWordFormSchema = z.object({
 });
 
 type SingleWordFormValues = z.infer<typeof singleWordFormSchema>;
+
+type GeminiEditableWord = {
+  id: string;
+  term: string;
+  definition: string;
+  definitionVietnamese?: string | null;
+  example?: string | null;
+  typeOfWord?: string | null;
+  note?: string | null;
+  level: number;
+};
+
+const createPreviewWordId = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const clampLevel = (value: number, fallback: number) => {
+  const baseline = Number.isFinite(value) ? value : fallback;
+  return Math.min(Math.max(Math.round(baseline), 1), 10);
+};
+
+const normalizeOptionalString = (value?: string | null) => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const formatTypeOfWord = (value?: string | null) => {
+  if (typeof value !== "string" || value.trim().length === 0) return "";
+  return value.replace(/([a-z])([A-Z])/g, "$1 $2");
+};
+
+const valueOrEmpty = (value?: string | null) => (typeof value === "string" ? value.trim() : "");
+
+const highlightTermInExample = (example: string, term: string) => {
+  if (!example || !term) return example;
+  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(\\b${escapedTerm}\\b)`, "gi");
+  return example.replace(pattern, "<mark>$1</mark>");
+};
+
+const toEditableGeminiWord = (word: GeminiPreviewWord, fallbackLevel: number): GeminiEditableWord => ({
+  id: createPreviewWordId(),
+  term: word.Term?.trim() ?? "",
+  definition: word.Definition?.trim() ?? "",
+  definitionVietnamese: word.DefinitionVietnamese ?? null,
+  example: word.Example ?? null,
+  typeOfWord: word.TypeOfWord ?? null,
+  note: word.Note ?? null,
+  level: clampLevel(word.Level ?? fallbackLevel, fallbackLevel),
+});
 
 function FlashcardDeck({
   words,
@@ -151,6 +265,20 @@ function FlashcardDeck({
     setIndex(0);
     setRevealed(false);
   }, [words]);
+
+  const handleReveal = () => {
+    setRevealed((value) => !value);
+  };
+
+  const handleNext = () => {
+    setRevealed(false);
+    setIndex((value) => Math.min(value + 1, words.length - 1));
+  };
+
+  const handlePrevious = () => {
+    setRevealed(false);
+    setIndex((value) => Math.max(value - 1, 0));
+  };
 
   if (loading) {
     return (
@@ -199,46 +327,53 @@ function FlashcardDeck({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-xl border bg-card p-6 text-center shadow-sm">
-        <div className="text-xs uppercase text-muted-foreground">
-          Card {index + 1} of {words.length}
-        </div>
-        <div className="mt-4 text-2xl font-semibold text-foreground">
-          {current.Term}
-        </div>
-        <div className="mt-6 text-base text-muted-foreground">
-          {revealed ? current.Definition : "Tap reveal to see the definition"}
+      <div className="relative mx-auto w-full max-w-lg perspective-1000">
+        <div
+          className={`relative h-64 w-full cursor-pointer transform-style-preserve-3d rounded-xl border bg-card p-6 text-center shadow-sm transition-transform duration-300 ${
+            revealed ? "rotate-y-180" : ""
+          }`}
+          onClick={handleReveal}
+        >
+          <div className="absolute inset-0 flex h-full w-full flex-col justify-center gap-4 backface-hidden">
+            <span className="text-xs uppercase text-muted-foreground">
+              Card {index + 1} of {words.length}
+            </span>
+            <span className="text-2xl font-semibold text-foreground">{current.Term}</span>
+            <span className="text-sm text-muted-foreground">Tap to reveal the definition</span>
+          </div>
+          <div className="absolute inset-0 flex h-full w-full flex-col justify-center gap-4 backface-hidden rotate-y-180">
+            <span className="text-xs uppercase text-muted-foreground">Definition</span>
+            <span className="px-2 text-lg leading-relaxed text-foreground">{current.Definition}</span>
+            <span className="text-sm text-muted-foreground">Tap to show the term</span>
+          </div>
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => hasPrevious && setIndex((value) => value - 1)}
+          onClick={handlePrevious}
           disabled={!hasPrevious}
-          className="gap-2"
+          className="order-2 gap-2 sm:order-1"
         >
           <IconChevronLeft className="size-4" /> Previous
         </Button>
-        <div className="flex gap-2">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => setRevealed((value) => !value)}
-            className="w-28"
-          >
+        <div className="order-1 flex justify-center gap-2 sm:order-2">
+          <Button variant="default" size="sm" onClick={handleReveal} className="min-w-28">
             {revealed ? "Hide" : "Reveal"}
           </Button>
           <Button variant="outline" size="sm" onClick={onShuffle} className="gap-2">
-            <IconRefresh className="size-4" /> Shuffle
+            <IconRefresh className="size-4" />
+            <span className="hidden sm:inline">Shuffle</span>
           </Button>
         </div>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => hasNext && setIndex((value) => value + 1)}
+          onClick={handleNext}
           disabled={!hasNext}
-          className="gap-2"
+          className="order-3 gap-2"
         >
           Next <IconChevronRight className="size-4" />
         </Button>
@@ -286,10 +421,13 @@ const WordSetDetailPage = () => {
 
   const [geminiDialogOpen, setGeminiDialogOpen] = useState(false);
   const [geminiPrompt, setGeminiPrompt] = useState("");
-  const [geminiMaxWords, setGeminiMaxWords] = useState<number | undefined>(10);
-  const [geminiDefaultLevel, setGeminiDefaultLevel] = useState<number | undefined>(2);
-  const [geminiSubmitting, setGeminiSubmitting] = useState(false);
+  const [geminiPreviewWords, setGeminiPreviewWords] = useState<GeminiEditableWord[]>([]);
+  const [geminiPreviewLoading, setGeminiPreviewLoading] = useState(false);
+  const [geminiSaving, setGeminiSaving] = useState(false);
   const [geminiError, setGeminiError] = useState<string | null>(null);
+  const geminiPreviewCount = geminiPreviewWords.length;
+  const hasGeminiPreview = geminiPreviewCount > 0;
+  const isGeminiBusy = geminiPreviewLoading || geminiSaving;
 
   const openAddWordDialog = useCallback(() => {
     setSingleDefaultValues({ term: "", definition: "", level: 1 });
@@ -316,13 +454,15 @@ const WordSetDetailPage = () => {
   const openGeminiDialog = useCallback(() => {
     setGeminiError(null);
     setGeminiPrompt("");
+    setGeminiPreviewWords([]);
     setGeminiDialogOpen(true);
   }, []);
 
   const closeGeminiDialog = useCallback(() => {
-    if (geminiSubmitting) return;
+    if (geminiPreviewLoading || geminiSaving) return;
     setGeminiDialogOpen(false);
-  }, [geminiSubmitting]);
+    setGeminiPreviewWords([]);
+  }, [geminiPreviewLoading, geminiSaving]);
 
 
   const fetchWordSet = useCallback(async () => {
@@ -354,8 +494,11 @@ const WordSetDetailPage = () => {
       };
 
       if (searchKeyword) {
+        const apiSearchColumns = WORD_TABLE_SEARCH_COLUMNS.map((column) =>
+          COLUMN_FIELD_MAP[column as keyof typeof COLUMN_FIELD_MAP] ?? column
+        );
         const searchRule: SearchRule = {
-          Columns: ["Term", "Definition"],
+          Columns: Array.from(new Set(apiSearchColumns)),
           Keyword: searchKeyword,
         };
         request.Search = searchRule;
@@ -529,13 +672,164 @@ const WordSetDetailPage = () => {
     [],
   );
 
+  const handleGeminiPreview = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!id) return;
+
+      const prompt = geminiPrompt.trim();
+      if (!prompt) {
+        setGeminiError("Vui lòng mô tả yêu cầu cho Gemini.");
+        return;
+      }
+
+      setGeminiPreviewLoading(true);
+      setGeminiError(null);
+
+      try {
+        const payload: GeminiWordsRequest = { prompt };
+        const fallbackLevel = 1;
+        const preview = await wordSetsApi.generateWordsWithGemini(payload);
+        const normalized = preview.map((word) => toEditableGeminiWord(word, fallbackLevel));
+
+        setGeminiPreviewWords(normalized);
+
+        if (normalized.length === 0) {
+          toast.info("Gemini không trả về đề xuất nào. Hãy thử yêu cầu cụ thể hơn.");
+        } else {
+          toast.success(`Gemini đã gợi ý ${normalized.length} từ. Chỉnh sửa trước khi lưu.`);
+        }
+      } catch (error) {
+        console.error("Failed to preview words with Gemini", error);
+        const message =
+          error instanceof Error ? error.message : "Gemini đang bận, vui lòng thử lại.";
+        setGeminiError(message);
+        toast.error(message);
+      } finally {
+        setGeminiPreviewLoading(false);
+      }
+    },
+  [geminiPrompt, id],
+  );
+
+  const handleGeminiWordChange = useCallback(
+    (
+      wordId: string,
+      field:
+        | "term"
+        | "definition"
+        | "definitionVietnamese"
+        | "example"
+        | "typeOfWord"
+        | "note"
+        | "level",
+      value: string,
+    ) => {
+      setGeminiPreviewWords((words) =>
+        words.map((word) => {
+          if (word.id !== wordId) return word;
+          if (field === "level") {
+            const parsed = Number(value);
+            return {
+              ...word,
+              level: clampLevel(parsed, word.level),
+            };
+          }
+
+          if (field === "term" || field === "definition") {
+            return {
+              ...word,
+              [field]: value,
+            } as GeminiEditableWord;
+          }
+
+          const hasContent = value.trim().length > 0;
+
+          return {
+            ...word,
+            [field]: hasContent ? value : null,
+          } as GeminiEditableWord;
+        }),
+      );
+    },
+    [],
+  );
+
+  const handleGeminiWordRemove = useCallback((wordId: string) => {
+    setGeminiPreviewWords((words) => words.filter((word) => word.id !== wordId));
+  }, []);
+
+  const handleGeminiAddEmpty = useCallback(() => {
+    const fallback = 1;
+    setGeminiPreviewWords((words) => [
+      ...words,
+      {
+        id: createPreviewWordId(),
+        term: "",
+        definition: "",
+        level: fallback,
+      },
+    ]);
+  }, []);
+
+  const handleGeminiClearPreview = useCallback(() => {
+    setGeminiPreviewWords([]);
+  }, []);
+
+  const handleGeminiSave = useCallback(async () => {
+    if (!id) return;
+
+    const fallback = 1;
+    const sanitized = geminiPreviewWords
+      .map<BulkCreateWordInput>((word) => ({
+        term: word.term.trim(),
+        definition: word.definition.trim(),
+        definitionVietnamese: normalizeOptionalString(word.definitionVietnamese),
+        example: normalizeOptionalString(word.example),
+        typeOfWord: normalizeOptionalString(word.typeOfWord),
+        note: normalizeOptionalString(word.note),
+        level: clampLevel(word.level, fallback),
+      }))
+      .filter((word) => word.term.length > 0 && word.definition.length > 0);
+
+    if (sanitized.length === 0) {
+      setGeminiError("Không có từ hợp lệ để lưu. Vui lòng kiểm tra lại danh sách.");
+      return;
+    }
+
+    const removedCount = geminiPreviewWords.length - sanitized.length;
+
+    setGeminiSaving(true);
+    setGeminiError(null);
+
+    try {
+      const created = await wordSetsApi.createWordsBulk(id, sanitized);
+      if (removedCount > 0) {
+        toast.info(`${removedCount} mục trống đã bị bỏ qua.`);
+      }
+      toast.success(`Đã thêm ${created.length} từ vào bộ hiện tại.`);
+      setGeminiDialogOpen(false);
+      setGeminiPreviewWords([]);
+      setGeminiPrompt("");
+      await Promise.all([fetchWords(), fetchWordSet()]);
+    } catch (error) {
+      console.error("Failed to save Gemini words", error);
+      const message = error instanceof Error ? error.message : "Không thể lưu từ lúc này.";
+      setGeminiError(message);
+      toast.error(message);
+    } finally {
+      setGeminiSaving(false);
+    }
+  }, [fetchWordSet, fetchWords, geminiPreviewWords, id]);
+
   const handleSingleWordSubmit = useCallback(
     async (values: SingleWordFormValues) => {
       if (!id) return;
 
       const trimmedTerm = values.term.trim();
       const trimmedDefinition = values.definition.trim();
-      const normalizedLevel = Number.isFinite(values.level) && values.level > 0 ? Math.round(values.level) : 1;
+      const normalizedLevel =
+        Number.isFinite(values.level) && values.level > 0 ? Math.round(values.level) : 1;
 
       if (!trimmedTerm || !trimmedDefinition) {
         toast.error("Vui lòng nhập đầy đủ từ và định nghĩa.");
@@ -607,48 +901,6 @@ const WordSetDetailPage = () => {
     [bulkInput, bulkLevel, fetchWordSet, fetchWords, id, parseBulkWords],
   );
 
-  const handleGeminiSubmit = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (!id) return;
-
-      const prompt = geminiPrompt.trim();
-      if (!prompt) {
-        setGeminiError("Vui lòng mô tả yêu cầu cho Gemini.");
-        return;
-      }
-
-      setGeminiSubmitting(true);
-      setGeminiError(null);
-
-      try {
-        const payload: GeminiWordsRequest = {
-          prompt,
-          defaultLevel: geminiDefaultLevel && geminiDefaultLevel > 0 ? Math.min(Math.round(geminiDefaultLevel), 10) : undefined,
-          maxWords: geminiMaxWords && geminiMaxWords > 0 ? Math.min(Math.round(geminiMaxWords), 50) : undefined,
-        };
-
-        const created = await wordSetsApi.createWordsWithGemini(id, payload);
-
-        if (created.length === 0) {
-          toast.info("Gemini không trả về từ mới nào. Hãy thử mô tả cụ thể hơn.");
-        } else {
-          toast.success(`Gemini đã thêm ${created.length} từ.`);
-        }
-
-        setGeminiDialogOpen(false);
-        await Promise.all([fetchWords(), fetchWordSet()]);
-      } catch (error) {
-        console.error("Failed to add words with Gemini", error);
-        const message = error instanceof Error ? error.message : "Gemini đang bận, vui lòng thử lại.";
-        setGeminiError(message);
-        toast.error(message);
-      } finally {
-        setGeminiSubmitting(false);
-      }
-    },
-    [fetchWordSet, fetchWords, geminiDefaultLevel, geminiMaxWords, geminiPrompt, id],
-  );
 
   useEffect(() => {
     void fetchWordSet();
@@ -687,10 +939,10 @@ const WordSetDetailPage = () => {
         onSelect: () => {
           openGeminiDialog();
         },
-        disabled: geminiSubmitting,
+        disabled: geminiPreviewLoading || geminiSaving,
       },
     ],
-    [bulkSubmitting, geminiSubmitting, openBulkDialog, openGeminiDialog],
+    [bulkSubmitting, geminiPreviewLoading, geminiSaving, openBulkDialog, openGeminiDialog],
   );
 
   const wordRows = useMemo<WordRow[]>(() => {
@@ -700,6 +952,10 @@ const WordSetDetailPage = () => {
       id: word.Id,
       header: word.Term,
       definition: word.Definition,
+      definitionVietnamese: valueOrEmpty(word.DefinitionVietnamese),
+      example: valueOrEmpty(word.Example),
+      typeOfWord: formatTypeOfWord(word.TypeOfWord),
+      note: valueOrEmpty(word.Note),
       level: word.Level,
       createdAt: format(new Date(word.CreatedAt), "MMM d, yyyy"),
       original: word,
@@ -753,7 +1009,68 @@ const WordSetDetailPage = () => {
         header: "Definition",
         enableSorting: false,
         cell: ({ row }) => (
-          <span className="text-muted-foreground">{row.original.definition}</span>
+          <span className="whitespace-pre-line text-foreground">{row.original.definition}</span>
+        ),
+      },
+      {
+        id: "definitionVietnamese",
+        accessorKey: "definitionVietnamese",
+        header: "Nghĩa tiếng Việt",
+        enableSorting: false,
+        cell: ({ row }) => (
+          row.original.definitionVietnamese ? (
+            <span className="whitespace-pre-line text-foreground">{row.original.definitionVietnamese}</span>
+          ) : (
+            <span className="text-muted-foreground/60">—</span>
+          )
+        ),
+      },
+      {
+        id: "example",
+        accessorKey: "example",
+        header: "Ví dụ",
+        enableSorting: false,
+        cell: ({ row }) => {
+          if (!row.original.example) {
+            return <span className="text-muted-foreground/60">—</span>;
+          }
+
+          const highlighted = highlightTermInExample(row.original.example, row.original.header);
+
+          return (
+            <span
+              className="whitespace-pre-line italic text-foreground/90"
+              dangerouslySetInnerHTML={{ __html: highlighted }}
+            />
+          );
+        },
+      },
+      {
+        id: "typeOfWord",
+        accessorKey: "typeOfWord",
+        header: "Loại từ",
+        enableSorting: false,
+        cell: ({ row }) => (
+          row.original.typeOfWord ? (
+            <Badge variant="outline" className="px-2 py-0 text-[0.65rem] capitalize">
+              {row.original.typeOfWord}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground/60">—</span>
+          )
+        ),
+      },
+      {
+        id: "note",
+        accessorKey: "note",
+        header: "Ghi chú",
+        enableSorting: false,
+        cell: ({ row }) => (
+          row.original.note ? (
+            <span className="whitespace-pre-line text-foreground">{row.original.note}</span>
+          ) : (
+            <span className="text-muted-foreground/60">—</span>
+          )
         ),
       },
       {
@@ -762,7 +1079,11 @@ const WordSetDetailPage = () => {
         header: () => <div className="text-right">Level</div>,
         enableSorting: true,
         cell: ({ row }) => (
-          <div className="text-right text-muted-foreground">{row.original.level}</div>
+          <div className="flex justify-end">
+            <Badge variant="secondary" className="px-2 py-0 text-[0.7rem]">
+              Lv {row.original.level}
+            </Badge>
+          </div>
         ),
       },
       {
@@ -880,44 +1201,6 @@ const WordSetDetailPage = () => {
 
   return (
     <PageShell>
-      <PageHeader
-        title={
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate(-1)}>
-              <IconArrowLeft className="size-4" /> Back
-            </Button>
-            <Typography variant="h2">Word set details</Typography>
-          </div>
-        }
-        description="Xem thông tin chi tiết và quản lý các từ trong bộ."
-        actions={
-          <>
-            <SplitButton
-              size="sm"
-              primaryAction={{
-                label: (
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconPlus className="size-4" /> Thêm từ
-                  </span>
-                ),
-                onClick: openAddWordDialog,
-                disabled: addWordSubmitting,
-              }}
-              options={addWordMenuItems}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={handleRefreshAll}
-              disabled={wordSetLoading || wordsLoading || flashLoading}
-            >
-              <IconRefresh className="size-4" /> Refresh
-            </Button>
-          </>
-        }
-      />
-
       <PageSection>
         <Card>
           <CardHeader>
@@ -958,6 +1241,21 @@ const WordSetDetailPage = () => {
                       <IconStar className="size-4" />
                       {wordSet.IsFavorite ? "Favorited" : "Favorite"}
                     </Button>
+                    <div className="flex-1" />
+                    <SplitButton
+                      size="sm"
+                      primaryAction={{
+                        label: (
+                          <span className="inline-flex items-center gap-1.5">
+                            <IconPlus className="size-4" /> 
+                            <span className="hidden sm:inline">Thêm từ</span>
+                          </span>
+                        ),
+                        onClick: openAddWordDialog,
+                        disabled: addWordSubmitting,
+                      }}
+                      options={addWordMenuItems}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
@@ -965,7 +1263,8 @@ const WordSetDetailPage = () => {
                       onClick={handleRefreshAll}
                       disabled={wordSetLoading || wordsLoading || flashLoading}
                     >
-                      <IconRefresh className="size-4" /> Refresh
+                      <IconRefresh className="size-4" />
+                      <span className="hidden sm:inline">Refresh</span>
                     </Button>
                   </div>
                 </CardAction>
@@ -1031,7 +1330,7 @@ const WordSetDetailPage = () => {
                 buttons={wordTableButtons}
                 filters={filterRules}
                 filterFields={WORD_FILTER_FIELDS}
-                searchableColumns={["header", "definition"]}
+                searchableColumns={WORD_TABLE_SEARCH_COLUMNS}
                 onSearchChange={handleTableSearchChange}
                 onFiltersChange={handleTableFiltersChange}
                 onSortChange={handleTableSortChange}
@@ -1161,7 +1460,6 @@ const WordSetDetailPage = () => {
             </div>
           </form>
       </ResponsiveDialog>
-
       <ResponsiveDialog
         open={geminiDialogOpen}
         onOpenChange={(nextOpen) => {
@@ -1172,82 +1470,258 @@ const WordSetDetailPage = () => {
           }
         }}
         title="Thêm từ với Gemini"
-        description={(
-          <>
-            Mô tả chủ đề hoặc dán danh sách từ khóa. Chúng tôi sẽ gửi <strong>một</strong> yêu cầu duy nhất tới Gemini và thêm toàn bộ kết quả trả về.
-          </>
-        )}
-        desktopContentClassName="max-w-2xl"
+        description="Nhập yêu cầu để Gemini gợi ý danh sách từ vựng, sau đó chỉnh sửa trước khi lưu vào bộ hiện tại."
+  desktopContentClassName="sm:max-w-7xl"
       >
-        <form className="flex flex-col gap-4" onSubmit={handleGeminiSubmit}>
+        <form
+          className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]"
+          onSubmit={handleGeminiPreview}
+        >
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="gemini-prompt">Yêu cầu cho Gemini</Label>
+              <Label htmlFor="gemini-prompt">Mô tả yêu cầu</Label>
               <Textarea
                 id="gemini-prompt"
                 value={geminiPrompt}
                 onChange={(event) => setGeminiPrompt(event.target.value)}
-                placeholder="Ví dụ: Tạo 5 từ vựng TOEIC về chủ đề logistics kèm định nghĩa tiếng Việt."
+                placeholder="Ví dụ: Gợi ý 8 từ vựng học thuật về công nghệ kèm định nghĩa, dịch nghĩa và câu ví dụ."
                 rows={8}
-                disabled={geminiSubmitting}
+                disabled={isGeminiBusy}
               />
               <p className="text-xs text-muted-foreground">
-                Bạn có thể dán nhiều từ khóa cùng lúc; hệ thống chỉ gọi Gemini một lần với toàn bộ nội dung.
+                Mô tả chủ đề, trình độ và các yêu cầu bổ sung (dịch nghĩa, câu ví dụ, loại từ...).
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="gemini-default-level">Level mặc định</Label>
-                <Input
-                  id="gemini-default-level"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={geminiDefaultLevel ?? ""}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    if (next === "") {
-                      setGeminiDefaultLevel(undefined);
-                      return;
-                    }
-                    const parsed = Number(next);
-                    setGeminiDefaultLevel(Number.isFinite(parsed) ? parsed : undefined);
-                  }}
-                  disabled={geminiSubmitting}
-                />
-                <p className="text-xs text-muted-foreground">Tùy chọn; áp dụng khi Gemini không trả về level.</p>
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="gemini-max-words">Số từ tối đa</Label>
-                <Input
-                  id="gemini-max-words"
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={geminiMaxWords ?? ""}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    if (next === "") {
-                      setGeminiMaxWords(undefined);
-                      return;
-                    }
-                    const parsed = Number(next);
-                    setGeminiMaxWords(Number.isFinite(parsed) ? parsed : undefined);
-                  }}
-                  disabled={geminiSubmitting}
-                />
-                <p className="text-xs text-muted-foreground">Giới hạn tránh thêm quá nhiều từ một lần.</p>
+
+            <div className="max-w-full overflow-x-auto">
+              <div className="flex w-max items-center gap-2 py-1 pr-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGeminiAddEmpty}
+                  disabled={isGeminiBusy}
+                >
+                  Thêm trống
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGeminiClearPreview}
+                  disabled={isGeminiBusy || !hasGeminiPreview}
+                >
+                  Xóa danh sách
+                </Button>
               </div>
             </div>
-            {geminiError ? <p className="text-xs text-destructive">{geminiError}</p> : null}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={closeGeminiDialog} disabled={geminiSubmitting}>
-                Hủy
+
+            {geminiError ? (
+              <p className="text-xs text-destructive">{geminiError}</p>
+            ) : null}
+
+            {hasGeminiPreview ? (
+              <div className="rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
+                Đang có {geminiPreviewCount} gợi ý. Chỉnh sửa các trường bên phải trước khi lưu vào word set.
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
+                Chưa có gợi ý. Điền yêu cầu và chọn <strong>Xem gợi ý</strong> để tạo danh sách.
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-sm font-medium">Danh sách gợi ý</Label>
+              {hasGeminiPreview ? (
+                <span className="text-xs text-muted-foreground">{geminiPreviewCount} mục</span>
+              ) : null}
+            </div>
+
+            <div className="min-h-80 rounded-lg border bg-muted/30">
+              {geminiPreviewLoading && !hasGeminiPreview ? (
+                <div className="flex h-full flex-col gap-3 p-4">
+                  <Skeleton className="h-5 w-48" />
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                </div>
+              ) : hasGeminiPreview ? (
+                <ScrollArea className="h-[420px]">
+                  <div className="flex flex-col gap-4 p-4 pr-6">
+                    {geminiPreviewWords.map((word, index) => (
+                      <div
+                        key={word.id}
+                        className="rounded-lg border bg-card/60 p-4 shadow-sm transition hover:border-primary/40"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Gợi ý {index + 1}</p>
+                            <p className="text-xs text-muted-foreground">Level {word.level}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleGeminiWordRemove(word.id)}
+                            disabled={isGeminiBusy}
+                            className="size-8 text-muted-foreground hover:text-destructive"
+                          >
+                            <IconTrash className="size-4" />
+                            <span className="sr-only">Xóa gợi ý</span>
+                          </Button>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                          <div className="flex flex-col gap-1">
+                            <Label htmlFor={`gemini-term-${word.id}`}>Từ vựng</Label>
+                            <Input
+                              id={`gemini-term-${word.id}`}
+                              value={word.term}
+                              onChange={(event) =>
+                                handleGeminiWordChange(word.id, "term", event.target.value)
+                              }
+                              disabled={isGeminiBusy}
+                              placeholder="Ví dụ: impetus"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 sm:w-28">
+                            <Label htmlFor={`gemini-level-${word.id}`}>Độ khó</Label>
+                            <Input
+                              id={`gemini-level-${word.id}`}
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={word.level}
+                              onChange={(event) =>
+                                handleGeminiWordChange(word.id, "level", event.target.value)
+                              }
+                              disabled={isGeminiBusy}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-col gap-1">
+                          <Label htmlFor={`gemini-definition-${word.id}`}>Định nghĩa</Label>
+                          <Textarea
+                            id={`gemini-definition-${word.id}`}
+                            value={word.definition}
+                            rows={3}
+                            onChange={(event) =>
+                              handleGeminiWordChange(word.id, "definition", event.target.value)
+                            }
+                            disabled={isGeminiBusy}
+                            placeholder="Giải thích bằng tiếng Anh"
+                          />
+                        </div>
+
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div className="flex flex-col gap-1">
+                            <Label htmlFor={`gemini-definition-vi-${word.id}`}>
+                              Dịch nghĩa (Tùy chọn)
+                            </Label>
+                            <Textarea
+                              id={`gemini-definition-vi-${word.id}`}
+                              value={word.definitionVietnamese ?? ""}
+                              rows={3}
+                              onChange={(event) =>
+                                handleGeminiWordChange(
+                                  word.id,
+                                  "definitionVietnamese",
+                                  event.target.value,
+                                )
+                              }
+                              disabled={isGeminiBusy}
+                              placeholder="Dịch sang tiếng Việt"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label htmlFor={`gemini-example-${word.id}`}>
+                              Ví dụ (Tùy chọn)
+                            </Label>
+                            <Textarea
+                              id={`gemini-example-${word.id}`}
+                              value={word.example ?? ""}
+                              rows={3}
+                              onChange={(event) =>
+                                handleGeminiWordChange(word.id, "example", event.target.value)
+                              }
+                              disabled={isGeminiBusy}
+                              placeholder="Ví dụ: The occurrence surprised everyone."
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div className="flex flex-col gap-1">
+                            <Label htmlFor={`gemini-type-${word.id}`}>
+                              Loại từ (Tùy chọn)
+                            </Label>
+                            <Input
+                              id={`gemini-type-${word.id}`}
+                              value={word.typeOfWord ?? ""}
+                              onChange={(event) =>
+                                handleGeminiWordChange(word.id, "typeOfWord", event.target.value)
+                              }
+                              disabled={isGeminiBusy}
+                              placeholder="Ví dụ: Noun"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label htmlFor={`gemini-note-${word.id}`}>
+                              Ghi chú (Tùy chọn)
+                            </Label>
+                            <Textarea
+                              id={`gemini-note-${word.id}`}
+                              value={word.note ?? ""}
+                              rows={2}
+                              onChange={(event) =>
+                                handleGeminiWordChange(word.id, "note", event.target.value)
+                              }
+                              disabled={isGeminiBusy}
+                              placeholder="Thông tin bổ sung"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+                  Chưa có gợi ý nào. Điền yêu cầu ở cột bên trái để bắt đầu.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-between gap-2 lg:col-span-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeGeminiDialog}
+              disabled={isGeminiBusy}
+            >
+              Đóng
+            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                variant="secondary"
+                disabled={isGeminiBusy || geminiPrompt.trim().length === 0}
+              >
+                {geminiPreviewLoading ? "Đang tạo gợi ý..." : "Xem gợi ý"}
               </Button>
-              <Button type="submit" disabled={geminiSubmitting || geminiPrompt.trim().length === 0}>
-                {geminiSubmitting ? "Đang gửi Gemini..." : "Gửi yêu cầu"}
+              <Button
+                type="button"
+                onClick={handleGeminiSave}
+                disabled={isGeminiBusy || !hasGeminiPreview}
+              >
+                {geminiSaving ? "Đang lưu..." : `Lưu ${geminiPreviewCount} từ`}
               </Button>
             </div>
-          </form>
+          </div>
+        </form>
       </ResponsiveDialog>
     </PageShell>
   );

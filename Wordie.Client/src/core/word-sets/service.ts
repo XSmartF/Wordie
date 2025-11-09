@@ -3,11 +3,13 @@ import type { PagedRequest, PagedResponse } from "@/shared/types/pagination"
 import type {
   BulkCreateWordPayload,
   CreateWordSetPayload,
+  GeminiPreviewWord,
   GeminiWordsPayload,
   UpdateWordSetPayload,
   WordSet,
   WordWithProgress,
 } from "./types"
+import { generateGeminiWords } from "./gemini-client"
 
 const mapWordSetPayload = (payload: CreateWordSetPayload | UpdateWordSetPayload) => ({
   Title: payload.title,
@@ -19,6 +21,10 @@ const mapBulkWordsPayload = (words: BulkCreateWordPayload[]) =>
   words.map((word) => ({
     term: word.term,
     definition: word.definition,
+    definitionVietnamese: word.definitionVietnamese ?? undefined,
+    example: word.example ?? undefined,
+    typeOfWord: word.typeOfWord ?? undefined,
+    note: word.note ?? undefined,
     level: word.level,
   }))
 
@@ -32,10 +38,10 @@ export interface WordSetsService {
   getWords(id: string, request: PagedRequest): Promise<PagedResponse<WordWithProgress>>
   createWord(
     id: string,
-    payload: { term: string; definition: string; level: number },
+    payload: { term: string; definition: string; level: number; definitionVietnamese?: string | null; example?: string | null; typeOfWord?: string | null; note?: string | null },
   ): Promise<WordWithProgress>
   createWordsBulk(id: string, payload: BulkCreateWordPayload[]): Promise<WordWithProgress[]>
-  createWordsWithGemini(id: string, payload: GeminiWordsPayload): Promise<WordWithProgress[]>
+  generateWordsWithGemini(payload: GeminiWordsPayload): Promise<GeminiPreviewWord[]>
   updateFavorite(id: string, isFavorite: boolean): Promise<WordSet>
   getFavorites(): Promise<WordSet[]>
 }
@@ -86,9 +92,8 @@ export const wordSetsService: WordSetsService = {
     return response.data as WordWithProgress[]
   },
 
-  async createWordsWithGemini(id, payload) {
-    const response = await httpClient.post(`/wordsets/${id}/words/gemini`, payload)
-    return response.data as WordWithProgress[]
+  async generateWordsWithGemini(payload) {
+    return generateGeminiWords(payload)
   },
 
   async updateFavorite(id, isFavorite) {

@@ -7,6 +7,10 @@ public record WordDto(
 	Guid Id,
 	string Term,
 	string Definition,
+    string? DefinitionVietnamese,
+    string? Example,
+    TypeOfWord? TypeOfWord,
+    string? Note,
 	int Level,
 	Guid? WordSetId,
 	DateTime CreatedAt,
@@ -22,9 +26,9 @@ public record WordDto(
 	StudyRating? LastRating,
 	DateTime? LastSessionAt
 );
-public record CreateWordRequest(string Term, string Definition, int Level, Guid? WordSetId);
-public record UpdateWordRequest(string Term, string Definition, int Level, Guid? WordSetId);
 
-public record BulkCreateWordItem(string Term, string Definition, int Level);
+public record CreateWordRequest(string Term, string Definition, int Level, Guid? WordSetId, string? DefinitionVietnamese, string? Example, TypeOfWord? TypeOfWord, string? Note);
+public record UpdateWordRequest(string Term, string Definition, int Level, Guid? WordSetId, string? DefinitionVietnamese, string? Example, TypeOfWord? TypeOfWord, string? Note);
+
+public record BulkCreateWordItem(string Term, string Definition, int Level, string? DefinitionVietnamese, string? Example, TypeOfWord? TypeOfWord, string? Note);
 public record BulkCreateWordsRequest(IReadOnlyList<BulkCreateWordItem> Words);
-public record GenerateWordsWithGeminiRequest(string Prompt, int? DefaultLevel = null, int? MaxWords = null);

@@ -80,12 +80,6 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-builder.Services.AddHttpClient<IGeminiWordGenerator, GeminiWordGenerator>(client =>
-{
-    client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
-
 builder.Services.AddScoped<IStudySessionService, StudySessionService>();
 
 var app = builder.Build();

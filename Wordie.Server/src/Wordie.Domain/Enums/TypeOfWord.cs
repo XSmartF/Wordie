@@ -1,0 +1,14 @@
+namespace Wordie.Domain.Enums;
+
+public enum TypeOfWord
+{
+    Noun = 1,
+    Pronoun = 2,
+    Verb = 3,
+    Adjective = 4,
+    Adverb = 5,
+    Preposition = 6,
+    Conjunction = 7,
+    Interjection = 8,
+    GrammarStructure = 9 // custom type for grammar/formula-style entries
+}

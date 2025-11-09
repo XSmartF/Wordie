@@ -1,6 +1,8 @@
 import * as React from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import {
+  type ControllerFieldState,
+  type ControllerRenderProps,
   type DefaultValues,
   type FieldValues,
   type Path,
@@ -14,11 +16,15 @@ import type { ZodType } from "zod"
 
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/shared/components/ui/button"
-import { Checkbox } from "@/shared/components/ui/checkbox"
-import { Input } from "@/shared/components/ui/input"
-import { Textarea } from "@/shared/components/ui/textarea"
-import { ComboBox } from "@/shared/components/combobox"
-import { MultiSelect, type MultiSelectOption } from "@/shared/components/ui/multi-select"
+import { Checkbox, type CheckboxProps } from "@/shared/components/ui/checkbox"
+import { Input, type InputProps } from "@/shared/components/ui/input"
+import { Textarea, type TextareaProps } from "@/shared/components/ui/textarea"
+import { ComboBox, type ComboBoxProps } from "@/shared/components/combobox"
+import {
+  MultiSelect,
+  type MultiSelectOption,
+  type MultiSelectProps,
+} from "@/shared/components/ui/multi-select"
 import { DatePicker } from "@/shared/components/ui/date-picker"
 import { DateRangePicker } from "@/shared/components/ui/date-range-picker"
 import {
@@ -36,6 +42,66 @@ import {
   FieldDescription as FieldHint,
   FieldTitle,
 } from "@/shared/components/ui/field"
+
+type InputConfigProps = Omit<
+  InputProps,
+  "value" | "defaultValue" | "onChange" | "disabled" | "name" | "ref"
+>
+
+type TextareaConfigProps = Omit<
+  TextareaProps,
+  "value" | "defaultValue" | "onChange" | "disabled" | "name" | "ref"
+>
+
+type ComboBoxConfigProps = Omit<
+  ComboBoxProps,
+  "value" | "onChange" | "items" | "disabled"
+>
+
+type MultiSelectConfigProps = Omit<
+  MultiSelectProps,
+  "value" | "onChange" | "options" | "disabled"
+>
+
+type DatePickerConfigProps = Omit<
+  React.ComponentPropsWithoutRef<typeof DatePicker>,
+  "value" | "onChange"
+>
+
+type DateRangePickerConfigProps = Omit<
+  React.ComponentPropsWithoutRef<typeof DateRangePicker>,
+  "value" | "onChange"
+>
+
+type CheckboxConfigProps = Omit<
+  CheckboxProps,
+  "checked" | "defaultChecked" | "onCheckedChange" | "disabled"
+>
+
+type FieldComponentProps = Omit<
+  React.ComponentPropsWithoutRef<typeof Field>,
+  "children"
+> & {
+  ["data-invalid"]?: string
+  ["data-disabled"]?: string
+}
+
+export type FormBuilderContext<
+  TFieldValues extends FieldValues = FieldValues,
+> = {
+  form: UseFormReturn<TFieldValues>
+  submitting: boolean
+}
+
+export interface FormFieldRenderProps<
+  TFieldValues extends FieldValues = FieldValues,
+> {
+  form: UseFormReturn<TFieldValues>
+  submitting: boolean
+  field: ControllerRenderProps<TFieldValues, Path<TFieldValues>>
+  fieldState: ControllerFieldState
+  defaultRender: () => React.ReactElement
+}
 
 export type FormFieldType =
   | "text"
@@ -67,6 +133,9 @@ interface BaseFieldConfig<TFieldValues extends FieldValues> {
   required?: boolean
   colSpan?: ColumnCount
   className?: string
+  fieldProps?: FieldComponentProps
+  shouldRender?: (context: FormBuilderContext<TFieldValues>) => boolean
+  render?: (props: FormFieldRenderProps<TFieldValues>) => React.ReactElement
 }
 
 export interface TextFieldConfig<TFieldValues extends FieldValues = FieldValues>
@@ -74,6 +143,7 @@ export interface TextFieldConfig<TFieldValues extends FieldValues = FieldValues>
   type: "text"
   autoComplete?: string
   maxLength?: number
+  inputProps?: InputConfigProps
 }
 
 export interface TextAreaFieldConfig<TFieldValues extends FieldValues = FieldValues>
@@ -81,6 +151,7 @@ export interface TextAreaFieldConfig<TFieldValues extends FieldValues = FieldVal
   type: "textarea"
   rows?: number
   autoResize?: boolean
+  textareaProps?: TextareaConfigProps
 }
 
 export interface NumberFieldConfig<TFieldValues extends FieldValues = FieldValues>
@@ -89,6 +160,7 @@ export interface NumberFieldConfig<TFieldValues extends FieldValues = FieldValue
   min?: number
   max?: number
   step?: number
+  inputProps?: InputConfigProps
 }
 
 export interface SelectFieldConfig<TFieldValues extends FieldValues = FieldValues>
@@ -96,6 +168,7 @@ export interface SelectFieldConfig<TFieldValues extends FieldValues = FieldValue
   type: "select"
   options: FormFieldOption[]
   allowEmpty?: boolean
+  comboBoxProps?: ComboBoxConfigProps
 }
 
 export interface MultiSelectFieldConfig<TFieldValues extends FieldValues = FieldValues>
@@ -103,6 +176,7 @@ export interface MultiSelectFieldConfig<TFieldValues extends FieldValues = Field
   type: "multi-select"
   options: MultiSelectOption[]
   maxBadgeCount?: number
+  multiSelectProps?: MultiSelectConfigProps
 }
 
 export interface DateFieldConfig<TFieldValues extends FieldValues = FieldValues>
@@ -110,6 +184,7 @@ export interface DateFieldConfig<TFieldValues extends FieldValues = FieldValues>
   type: "date"
   minDate?: Date
   maxDate?: Date
+  datePickerProps?: DatePickerConfigProps
 }
 
 export interface DateRangeFieldConfig<TFieldValues extends FieldValues = FieldValues>
@@ -118,11 +193,13 @@ export interface DateRangeFieldConfig<TFieldValues extends FieldValues = FieldVa
   minDate?: Date
   maxDate?: Date
   monthCount?: number
+  dateRangePickerProps?: DateRangePickerConfigProps
 }
 
 export interface CheckboxFieldConfig<TFieldValues extends FieldValues = FieldValues>
   extends BaseFieldConfig<TFieldValues> {
   type: "checkbox"
+  checkboxProps?: CheckboxConfigProps
 }
 
 export type FormFieldConfig<TFieldValues extends FieldValues = FieldValues> =
@@ -150,6 +227,9 @@ export interface FormBuilderProps<TValues extends FieldValues = FieldValues> {
   renderFooter?:
     | React.ReactNode
     | ((form: UseFormReturn<TValues>) => React.ReactNode)
+  formProps?: Omit<React.ComponentPropsWithoutRef<"form">, "onSubmit" | "className">
+  fieldsWrapperClassName?: string
+  onFormReady?: (form: UseFormReturn<TValues>) => void
 }
 
 const COLUMN_CLASS_MAP: Record<ColumnCount, string> = {
@@ -195,19 +275,22 @@ interface DatePredicateConfig {
   isDisabled?: boolean
   minDate?: Date
   maxDate?: Date
+  basePredicate?: ((date: Date) => boolean) | undefined
 }
 
 function buildDateDisabledPredicate({
   isDisabled,
   minDate,
   maxDate,
+  basePredicate,
 }: DatePredicateConfig): ((date: Date) => boolean) | undefined {
   if (isDisabled) {
     return () => true
   }
 
-  if (minDate || maxDate) {
+  if (minDate || maxDate || basePredicate) {
     return (date: Date) => {
+      if (basePredicate?.(date)) return true
       if (minDate && date < minDate) return true
       if (maxDate && date > maxDate) return true
       return false
@@ -215,6 +298,58 @@ function buildDateDisabledPredicate({
   }
 
   return undefined
+}
+
+function resolveFieldComponentProps<TFieldValues extends FieldValues>(
+  config: BaseFieldConfig<TFieldValues>,
+  fieldState: ControllerFieldState,
+  disabled: boolean,
+  defaultClassName: string,
+  defaultOrientation: FieldComponentProps["orientation"] = "vertical",
+): FieldComponentProps {
+  const override = config.fieldProps ?? {}
+  const { className, ...rest } = override
+  const base: FieldComponentProps = {
+    orientation: defaultOrientation,
+    className: defaultClassName,
+    "data-invalid": fieldState.error ? "true" : undefined,
+    "data-disabled": disabled ? "true" : undefined,
+  }
+
+  return {
+    ...base,
+    ...rest,
+    className: cn(base.className, className),
+  }
+}
+
+function renderWithOverride<TFieldValues extends FieldValues>(
+  config: BaseFieldConfig<TFieldValues>,
+  props: FormFieldRenderProps<TFieldValues>,
+) {
+  if (config.render) {
+    // Allow consumers to replace the default rendering while still getting access to helpers.
+    return config.render(props)
+  }
+
+  return props.defaultRender()
+}
+
+type DateRangePickerDisabled = React.ComponentPropsWithoutRef<
+  typeof DateRangePicker
+>["disabled"]
+
+function mergeDisabledMatchers(
+  base: DateRangePickerDisabled | undefined,
+  extra: DateRangePickerDisabled | undefined,
+): DateRangePickerDisabled | undefined {
+  if (!base) return extra
+  if (!extra) return base
+
+  const baseList = Array.isArray(base) ? base : [base]
+  const extraList = Array.isArray(extra) ? extra : [extra]
+
+  return [...baseList, ...extraList]
 }
 
 export function FormBuilder<TValues extends FieldValues = FieldValues>({
@@ -230,6 +365,9 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
   schema,
   formOptions,
   renderFooter,
+  formProps,
+  fieldsWrapperClassName,
+  onFormReady,
 }: FormBuilderProps<TValues>) {
   const form = useForm<TValues>({
     resolver: schema ? zodResolver(schema) : undefined,
@@ -243,6 +381,10 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
     }
   }, [defaultValues, form])
 
+  React.useEffect(() => {
+    onFormReady?.(form)
+  }, [form, onFormReady])
+
   const gridClass = COLUMN_CLASS_MAP[columns]
 
   const footerContent =
@@ -251,11 +393,16 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
   return (
     <Form {...form}>
       <form
+        {...formProps}
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn("flex flex-col gap-6", className)}
       >
-        <div className={cn("grid gap-4", gridClass)}>
+        <div className={cn("grid gap-4", gridClass, fieldsWrapperClassName)}>
           {fields.map((field) => {
+            if (field.shouldRender && !field.shouldRender({ form, submitting })) {
+              return null
+            }
+
             const fieldKey = field.name
             const rules = !schema && field.required
               ? {
@@ -282,14 +429,24 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { ref, value, onChange, ...rest } = controllerField
                       const disabled = field.disabled || submitting
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        "gap-2",
+                        "vertical",
+                      )
+                      const {
+                        className: inputClassName,
+                        placeholder: inputPlaceholder,
+                        autoComplete: inputAutoComplete,
+                        type: inputType,
+                        ...restInputProps
+                      } = field.inputProps ?? {}
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="vertical"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className="gap-2"
-                          >
+                          <Field {...fieldComponentProps}>
                             <FieldTitle className="text-sm font-medium">
                               <FormLabel className="flex items-center gap-1">
                                 {field.label}
@@ -304,10 +461,17 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                                   ref={ref}
                                   value={(value as string | undefined) ?? ""}
                                   onChange={(event) => onChange(event.target.value)}
-                                  placeholder={field.placeholder?.toString()}
-                                  autoComplete={"autoComplete" in field ? field.autoComplete : undefined}
+                                  placeholder={inputPlaceholder ?? field.placeholder}
+                                  autoComplete={
+                                    inputAutoComplete ?? (
+                                      "autoComplete" in field ? field.autoComplete : undefined
+                                    )
+                                  }
+                                  type={inputType ?? "text"}
                                   disabled={disabled}
                                   {...rest}
+                                  {...restInputProps}
+                                  className={cn(inputClassName)}
                                 />
                               </FormControl>
                               {field.helperText ? (
@@ -320,6 +484,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )
@@ -334,14 +506,27 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { ref, value, onChange, ...rest } = controllerField
                       const disabled = field.disabled || submitting
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        "gap-2",
+                        "vertical",
+                      )
+                      const {
+                        className: inputClassName,
+                        placeholder: inputPlaceholder,
+                        min: inputMin,
+                        max: inputMax,
+                        step: inputStep,
+                        inputMode: inputInputMode,
+                        autoComplete: inputAutoComplete,
+                        ...restInputProps
+                      } = field.inputProps ?? {}
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="vertical"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className="gap-2"
-                          >
+                          <Field {...fieldComponentProps}>
                             <FieldTitle className="text-sm font-medium">
                               <FormLabel className="flex items-center gap-1">
                                 {field.label}
@@ -368,13 +553,16 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                                         : Number(nextValue),
                                     )
                                   }}
-                                  placeholder={field.placeholder?.toString()}
+                                  placeholder={inputPlaceholder ?? field.placeholder}
                                   disabled={disabled}
-                                  inputMode="decimal"
-                                  min={"min" in field ? field.min : undefined}
-                                  max={"max" in field ? field.max : undefined}
-                                  step={"step" in field ? field.step : undefined}
+                                  inputMode={inputInputMode ?? "decimal"}
+                                  min={field.min ?? inputMin}
+                                  max={field.max ?? inputMax}
+                                  step={field.step ?? inputStep}
+                                  autoComplete={inputAutoComplete}
                                   {...rest}
+                                  {...restInputProps}
+                                  className={cn(inputClassName)}
                                 />
                               </FormControl>
                               {field.helperText ? (
@@ -387,6 +575,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )
@@ -401,14 +597,23 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { ref, value, onChange, ...rest } = controllerField
                       const disabled = field.disabled || submitting
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        "gap-2",
+                        "vertical",
+                      )
+                      const {
+                        className: textareaClassName,
+                        placeholder: textareaPlaceholder,
+                        rows: textareaRows,
+                        ...restTextareaProps
+                      } = field.textareaProps ?? {}
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="vertical"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className="gap-2"
-                          >
+                          <Field {...fieldComponentProps}>
                             <FieldTitle className="text-sm font-medium">
                               <FormLabel className="flex items-center gap-1">
                                 {field.label}
@@ -423,10 +628,12 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                                   ref={ref}
                                   value={(value as string | undefined) ?? ""}
                                   onChange={onChange}
-                                  placeholder={field.placeholder?.toString()}
+                                  placeholder={textareaPlaceholder ?? field.placeholder}
                                   disabled={disabled}
-                                  rows={field.rows ?? 4}
+                                  rows={textareaRows ?? field.rows ?? 4}
                                   {...rest}
+                                  {...restTextareaProps}
+                                  className={cn(textareaClassName)}
                                 />
                               </FormControl>
                               {field.helperText ? (
@@ -439,6 +646,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )
@@ -453,14 +668,23 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { ref, value, onChange, ...rest } = controllerField
                       const disabled = field.disabled || submitting
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        "gap-2",
+                        "vertical",
+                      )
+                      const {
+                        className: comboClassName,
+                        placeholder: comboPlaceholder,
+                        emptyMessage,
+                        ...restComboBoxProps
+                      } = field.comboBoxProps ?? {}
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="vertical"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className="gap-2"
-                          >
+                          <Field {...fieldComponentProps}>
                             <FieldTitle className="text-sm font-medium">
                               <FormLabel className="flex items-center gap-1">
                                 {field.label}
@@ -482,8 +706,11 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                                     }
                                     onChange(nextValue)
                                   }}
-                                  placeholder={field.placeholder?.toString()}
+                                  placeholder={comboPlaceholder ?? field.placeholder}
                                   disabled={disabled}
+                                  emptyMessage={emptyMessage}
+                                  className={comboClassName}
+                                  {...restComboBoxProps}
                                 />
                               </FormControl>
                               {field.helperText ? (
@@ -496,6 +723,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )
@@ -510,14 +745,23 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { value, onChange } = controllerField
                       const disabled = field.disabled || submitting
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        "gap-2",
+                        "vertical",
+                      )
+                      const {
+                        className: multiClassName,
+                        placeholder: multiPlaceholder,
+                        maxBadgeCount: multiMaxBadgeCount,
+                        ...restMultiSelectProps
+                      } = field.multiSelectProps ?? {}
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="vertical"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className="gap-2"
-                          >
+                          <Field {...fieldComponentProps}>
                             <FieldTitle className="text-sm font-medium">
                               <FormLabel className="flex items-center gap-1">
                                 {field.label}
@@ -533,9 +777,11 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                                     options={field.options}
                                     value={Array.isArray(value) ? (value as string[]) : []}
                                     onChange={(next) => onChange(next)}
-                                    placeholder={field.placeholder?.toString()}
+                                    placeholder={multiPlaceholder ?? field.placeholder}
                                     disabled={disabled}
-                                    maxBadgeCount={field.maxBadgeCount}
+                                    maxBadgeCount={field.maxBadgeCount ?? multiMaxBadgeCount}
+                                    className={multiClassName}
+                                    {...restMultiSelectProps}
                                   />
                                 </div>
                               </FormControl>
@@ -549,6 +795,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )
@@ -563,19 +817,39 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { value, onChange } = controllerField
                       const disabled = field.disabled || submitting
-                      const selectedDate = (value as any) instanceof Date
-                        ? (value as Date)
-                        : value
-                          ? new Date(value as unknown as string)
+                      const rawValue = value as unknown
+                      const selectedDate = rawValue instanceof Date
+                        ? rawValue
+                        : typeof rawValue === "string" || typeof rawValue === "number"
+                          ? new Date(rawValue)
                           : undefined
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        "gap-2",
+                        "vertical",
+                      )
+                      const {
+                        className: datePickerClassName,
+                        placeholder: datePickerPlaceholder,
+                        disabled: datePickerDisabled,
+                        ...restDatePickerProps
+                      } = field.datePickerProps ?? {}
+
+                      const computedDisabled = buildDateDisabledPredicate({
+                        isDisabled: disabled,
+                        minDate: field.minDate,
+                        maxDate: field.maxDate,
+                        basePredicate:
+                          typeof datePickerDisabled === "function"
+                            ? datePickerDisabled
+                            : undefined,
+                      })
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="vertical"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className="gap-2"
-                          >
+                          <Field {...fieldComponentProps}>
                             <FieldTitle className="text-sm font-medium">
                               <FormLabel className="flex items-center gap-1">
                                 {field.label}
@@ -590,13 +864,10 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                                   <DatePicker
                                     value={selectedDate}
                                     onChange={(date) => onChange(date ?? undefined)}
-                                    placeholder={field.placeholder?.toString()}
-                                    disabled={buildDateDisabledPredicate({
-                                      isDisabled: disabled,
-                                      minDate: field.minDate,
-                                      maxDate: field.maxDate,
-                                    })}
-                                    className="w-full"
+                                    placeholder={datePickerPlaceholder ?? field.placeholder}
+                                    disabled={computedDisabled ?? datePickerDisabled}
+                                    className={cn("w-full", datePickerClassName)}
+                                    {...restDatePickerProps}
                                   />
                                 </div>
                               </FormControl>
@@ -610,6 +881,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )
@@ -624,14 +903,35 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { value, onChange } = controllerField
                       const disabled = field.disabled || submitting
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        "gap-2",
+                        "vertical",
+                      )
+                      const {
+                        className: dateRangeClassName,
+                        placeholder: dateRangePlaceholder,
+                        disabled: dateRangeDisabled,
+                        monthCount: dateRangeMonthCount,
+                        ...restDateRangePickerProps
+                      } = field.dateRangePickerProps ?? {}
+
+                      const computedDisabled = buildDateDisabledPredicate({
+                        isDisabled: disabled,
+                        minDate: field.minDate,
+                        maxDate: field.maxDate,
+                      })
+
+                      const finalDisabled = mergeDisabledMatchers(
+                        dateRangeDisabled,
+                        computedDisabled,
+                      )
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="vertical"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className="gap-2"
-                          >
+                          <Field {...fieldComponentProps}>
                             <FieldTitle className="text-sm font-medium">
                               <FormLabel className="flex items-center gap-1">
                                 {field.label}
@@ -646,14 +946,11 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                                   <DateRangePicker
                                     value={value as DateRange | undefined}
                                     onChange={(range) => onChange(range)}
-                                    placeholder={field.placeholder?.toString()}
-                                    disabled={buildDateDisabledPredicate({
-                                      isDisabled: disabled,
-                                      minDate: field.minDate,
-                                      maxDate: field.maxDate,
-                                    })}
-                                    className="w-full"
-                                    monthCount={field.monthCount ?? 1}
+                                    placeholder={dateRangePlaceholder ?? field.placeholder}
+                                    disabled={finalDisabled}
+                                    className={cn("w-full", dateRangeClassName)}
+                                    monthCount={field.monthCount ?? dateRangeMonthCount ?? 1}
+                                    {...restDateRangePickerProps}
                                   />
                                 </div>
                               </FormControl>
@@ -667,6 +964,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )
@@ -681,23 +986,32 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                     render={({ field: controllerField, fieldState }) => {
                       const { value, onChange, ...rest } = controllerField
                       const disabled = field.disabled || submitting
-                      return (
+                      const fieldComponentProps = resolveFieldComponentProps(
+                        field,
+                        fieldState,
+                        disabled,
+                        cn(
+                          "items-start gap-3 rounded-md border border-transparent p-3 transition-colors",
+                          disabled ? "opacity-60" : "hover:border-border",
+                        ),
+                        "responsive",
+                      )
+                      const {
+                        className: checkboxClassName,
+                        ...restCheckboxProps
+                      } = field.checkboxProps ?? {}
+
+                      const defaultRender = () => (
                         <FormItem className={baseItemClass}>
-                          <Field
-                            orientation="responsive"
-                            data-invalid={fieldState.error ? "true" : undefined}
-                            data-disabled={disabled ? "true" : undefined}
-                            className={cn(
-                              "items-start gap-3 rounded-md border border-transparent p-3 transition-colors",
-                              disabled ? "opacity-60" : "hover:border-border",
-                            )}
-                          >
+                          <Field {...fieldComponentProps}>
                             <FormControl>
                               <Checkbox
                                 checked={!!value}
                                 onCheckedChange={(checked) => onChange(checked === true)}
                                 disabled={disabled}
+                                className={checkboxClassName}
                                 {...rest}
+                                {...restCheckboxProps}
                               />
                             </FormControl>
                             <FieldContent className="gap-1.5">
@@ -719,6 +1033,14 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
                           </Field>
                         </FormItem>
                       )
+
+                      return renderWithOverride(field, {
+                        form,
+                        submitting,
+                        field: controllerField,
+                        fieldState,
+                        defaultRender,
+                      })
                     }}
                   />
                 )

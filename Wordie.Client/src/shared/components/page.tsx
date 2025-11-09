@@ -49,7 +49,7 @@ export function PageHeader({
   return (
     <PageSection
       className={cn(
-        "flex flex-col gap-3 md:flex-row md:items-center md:justify-between",
+        "relative flex flex-col gap-4 rounded-2xl border border-indigo-100/60 bg-white/80 p-6 shadow-sm backdrop-blur-sm md:flex-row md:items-center md:justify-between dark:border-white/5 dark:bg-slate-900/70 isolate",
         className
       )}
       {...props}

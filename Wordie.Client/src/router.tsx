@@ -7,6 +7,7 @@ const DashboardPage = lazy(() => import("@/features/dashboard/pages/dashboard-pa
 const StudyPage = lazy(() => import("@/features/study/pages/study-page"));
 const WordSetsPage = lazy(() => import("@/features/word-sets/pages/word-sets-page"));
 const WordSetDetailPage = lazy(() => import("@/features/word-sets/pages/word-set-detail-page"));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 
 // Lazy load layouts
 const DefaultLayout = lazy(() => import("@/shared/layouts/default"));
@@ -36,6 +37,10 @@ export const router = createBrowserRouter([
             element: <WordSetDetailPage />,
           },
         ],
+      },
+      {
+        path: "settings",
+        element: <SettingsPage />,
       },
     ],
   },
