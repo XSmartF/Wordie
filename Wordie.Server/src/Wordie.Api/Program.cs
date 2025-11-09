@@ -24,7 +24,7 @@ var configuration = builder.Configuration;
 
 // Add DB
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(configuration.GetConnectionString("DefaultConnection") ?? "Server=(localdb)\\mssqllocaldb;Database=WordieDb;Trusted_Connection=True;"));
+    options.UseSqlServer(configuration.GetConnectionString("DefaultConnection") ?? "Server=db31895.public.databaseasp.net; Database=db31895; User Id=db31895; Password=Fa3+7#jARn9%; Encrypt=True; TrustServerCertificate=True; MultipleActiveResultSets=True;"));
 
 // Identity + JWT: configured in extension method for cleanliness
 builder.Services.AddIdentityServices(configuration);

@@ -16,7 +16,7 @@ var host = Host.CreateDefaultBuilder(args)
     {
         var cfg = ctx.Configuration;
         services.AddDbContext<ApplicationDbContext>(opts =>
-            opts.UseSqlServer(cfg.GetConnectionString("DefaultConnection") ?? "Server=(localdb)\\mssqllocaldb;Database=WordieDb;Trusted_Connection=True;"));
+            opts.UseSqlServer(cfg.GetConnectionString("DefaultConnection") ?? "Server=db31895.public.databaseasp.net; Database=db31895; User Id=db31895; Password=Fa3+7#jARn9%; Encrypt=True; TrustServerCertificate=True; MultipleActiveResultSets=True;"));
 
         // Register minimal Identity services so we can use UserManager/RoleManager in the seeder
         services.AddIdentityCore<Wordie.Domain.Entities.ApplicationUser>(opts =>
