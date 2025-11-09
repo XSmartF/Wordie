@@ -387,6 +387,18 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
 
   const gridClass = COLUMN_CLASS_MAP[columns]
 
+  // Suppress unhandled promise rejections when validation fails.
+  const handleFormSubmit = React.useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      void form
+        .handleSubmit(onSubmit)(event)
+        .catch(() => {
+          // Validation errors are managed by react-hook-form UI state.
+        })
+    },
+    [form, onSubmit],
+  )
+
   const footerContent =
     typeof renderFooter === "function" ? renderFooter(form) : renderFooter
 
@@ -394,7 +406,7 @@ export function FormBuilder<TValues extends FieldValues = FieldValues>({
     <Form {...form}>
       <form
         {...formProps}
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={handleFormSubmit}
         className={cn("flex flex-col gap-6", className)}
       >
         <div className={cn("grid gap-4", gridClass, fieldsWrapperClassName)}>
