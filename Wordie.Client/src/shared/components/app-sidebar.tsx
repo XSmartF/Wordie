@@ -7,6 +7,7 @@ import {
   IconStar,
 } from "@tabler/icons-react"
 import { Link } from "react-router-dom"
+import logo from '/wordielogo.png'
 
 import type { UserProfile } from "@/features/auth/types"
 import { useWordSetFavoritesQuery } from "@/features/word-sets/hooks/use-word-set-favorites"
@@ -68,9 +69,9 @@ export function AppSidebar({ user, onLogout, isUserLoading, ...props }: AppSideb
               asChild
             >
               <Link to="/">
-                <IconInnerShadowTop className="size-5! text-indigo-500" />
+                 <img src={logo} alt="" width={35}/>
                 <span className="text-base font-semibold text-indigo-600 dark:text-indigo-200">
-                  Wordie
+                 Wordie
                 </span>
               </Link>
             </SidebarMenuButton>
