@@ -21,10 +21,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 var configuration = builder.Configuration;
+var connectionString = configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured.");
+}
 
 // Add DB
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(configuration.GetConnectionString("DefaultConnection") ?? "Server=db31895.public.databaseasp.net; Database=db31895; User Id=db31895; Password=Fa3+7#jARn9%; Encrypt=True; TrustServerCertificate=True; MultipleActiveResultSets=True;"));
+    options.UseSqlServer(connectionString));
 
 // Identity + JWT: configured in extension method for cleanliness
 builder.Services.AddIdentityServices(configuration);

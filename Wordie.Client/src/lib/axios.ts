@@ -11,9 +11,9 @@ const resolveBaseUrl = () => {
   try {
     const url = new URL(configured, window.location.origin);
     const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname);
-    const servedOverHttps = window.location.protocol === "https:";
+    const shouldUpgradeToHttps = url.protocol === "http:" && !isLocalHost;
 
-    if (servedOverHttps && url.protocol === "http:" && !isLocalHost) {
+    if (shouldUpgradeToHttps) {
       url.protocol = "https:";
       return url.toString();
     }

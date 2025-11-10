@@ -2,8 +2,10 @@ import type { GeminiPreviewWord, WordWithProgress } from "@/core/word-sets/types
 import { wordSetsService } from "@/core/word-sets/service";
 import type {
   BulkCreateWordInput,
+  CreateWordInput,
   CreateWordSetRequest,
   GeminiWordsRequest,
+  UpdateWordInput,
   UpdateWordSetRequest,
   WordSetDto,
 } from "../types";
@@ -40,9 +42,13 @@ export const wordSetsApi = {
 
   createWord: (
     id: string,
-    data: { term: string; definition: string; level: number }
+    data: CreateWordInput
   ): Promise<WordWithProgress> => {
     return wordSetsService.createWord(id, data);
+  },
+
+  updateWord: (wordId: string, data: UpdateWordInput): Promise<void> => {
+    return wordSetsService.updateWord(wordId, data);
   },
 
   createWordsBulk: (id: string, words: BulkCreateWordInput[]): Promise<WordWithProgress[]> => {

@@ -181,6 +181,7 @@ const StudyPage = () => {
       { value: String(STUDY_MODE.Flashcard), label: "Flashcard" },
       { value: String(STUDY_MODE.MultipleChoice), label: "Multiple choice" },
       { value: String(STUDY_MODE.Typing), label: "Typing" },
+      { value: String(STUDY_MODE.SmartMix), label: "Smart mix" },
     ],
     []
   );

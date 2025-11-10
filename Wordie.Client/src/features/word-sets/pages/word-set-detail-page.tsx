@@ -187,6 +187,10 @@ type FetchError = string | null;
 const singleWordFormSchema = z.object({
   term: z.string().trim().min(1, "Vui lòng nhập từ vựng"),
   definition: z.string().trim().min(1, "Vui lòng nhập định nghĩa"),
+  definitionVietnamese: z.string().trim().max(500, "Tối đa 500 ký tự").optional(),
+  example: z.string().trim().max(500, "Tối đa 500 ký tự").optional(),
+  typeOfWord: z.string().trim().max(60, "Tối đa 60 ký tự").optional(),
+  note: z.string().trim().max(500, "Tối đa 500 ký tự").optional(),
   level: z
     .number()
     .min(1, "Độ khó tối thiểu là 1")
@@ -194,6 +198,16 @@ const singleWordFormSchema = z.object({
 });
 
 type SingleWordFormValues = z.infer<typeof singleWordFormSchema>;
+
+const createWordFormDefaults = (level = 1): SingleWordFormValues => ({
+  term: "",
+  definition: "",
+  definitionVietnamese: "",
+  example: "",
+  typeOfWord: "",
+  note: "",
+  level,
+});
 
 type GeminiEditableWord = {
   id: string;
@@ -407,11 +421,16 @@ const WordSetDetailPage = () => {
 
   const [addWordDialogOpen, setAddWordDialogOpen] = useState(false);
   const [addWordSubmitting, setAddWordSubmitting] = useState(false);
-  const [singleDefaultValues, setSingleDefaultValues] = useState<SingleWordFormValues>({
-    term: "",
-    definition: "",
-    level: 1,
-  });
+  const [singleDefaultValues, setSingleDefaultValues] = useState<SingleWordFormValues>(() =>
+    createWordFormDefaults()
+  );
+
+  const [editWordDialogOpen, setEditWordDialogOpen] = useState(false);
+  const [editWordSubmitting, setEditWordSubmitting] = useState(false);
+  const [editingWord, setEditingWord] = useState<WordDto | null>(null);
+  const [editWordDefaults, setEditWordDefaults] = useState<SingleWordFormValues>(() =>
+    createWordFormDefaults()
+  );
 
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkInput, setBulkInput] = useState("");
@@ -430,7 +449,7 @@ const WordSetDetailPage = () => {
   const isGeminiBusy = geminiPreviewLoading || geminiSaving;
 
   const openAddWordDialog = useCallback(() => {
-    setSingleDefaultValues({ term: "", definition: "", level: 1 });
+    setSingleDefaultValues(createWordFormDefaults());
     setAddWordDialogOpen(true);
   }, []);
 
@@ -438,6 +457,13 @@ const WordSetDetailPage = () => {
     if (addWordSubmitting) return;
     setAddWordDialogOpen(false);
   }, [addWordSubmitting]);
+
+  const closeEditWordDialog = useCallback(() => {
+    if (editWordSubmitting) return;
+    setEditWordDialogOpen(false);
+    setEditingWord(null);
+    setEditWordDefaults(createWordFormDefaults());
+  }, [editWordSubmitting]);
 
   const openBulkDialog = useCallback(() => {
     setBulkError(null);
@@ -822,16 +848,30 @@ const WordSetDetailPage = () => {
     }
   }, [fetchWordSet, fetchWords, geminiPreviewWords, id]);
 
+  const mapFormToWordPayload = useCallback((values: SingleWordFormValues) => {
+    const trimmedTerm = values.term.trim();
+    const trimmedDefinition = values.definition.trim();
+    const normalizedLevel = Number.isFinite(values.level) && values.level > 0 ? Math.round(values.level) : 1;
+    const clampedLevel = Math.min(Math.max(normalizedLevel, 1), 10);
+
+    return {
+      term: trimmedTerm,
+      definition: trimmedDefinition,
+      definitionVietnamese: normalizeOptionalString(values.definitionVietnamese),
+      example: normalizeOptionalString(values.example),
+      typeOfWord: normalizeOptionalString(values.typeOfWord),
+      note: normalizeOptionalString(values.note),
+      level: clampedLevel,
+    };
+  }, []);
+
   const handleSingleWordSubmit = useCallback(
     async (values: SingleWordFormValues) => {
       if (!id) return;
 
-      const trimmedTerm = values.term.trim();
-      const trimmedDefinition = values.definition.trim();
-      const normalizedLevel =
-        Number.isFinite(values.level) && values.level > 0 ? Math.round(values.level) : 1;
+      const payload = mapFormToWordPayload(values);
 
-      if (!trimmedTerm || !trimmedDefinition) {
+      if (!payload.term || !payload.definition) {
         toast.error("Vui lòng nhập đầy đủ từ và định nghĩa.");
         return;
       }
@@ -839,14 +879,10 @@ const WordSetDetailPage = () => {
       setAddWordSubmitting(true);
 
       try {
-        await wordSetsApi.createWord(id, {
-          term: trimmedTerm,
-          definition: trimmedDefinition,
-          level: Math.min(Math.max(normalizedLevel, 1), 10),
-        });
+        await wordSetsApi.createWord(id, payload);
 
-        toast.success(`Đã thêm "${trimmedTerm}" vào word set.`);
-        setSingleDefaultValues({ term: "", definition: "", level: normalizedLevel });
+        toast.success(`Đã thêm "${payload.term}" vào word set.`);
+        setSingleDefaultValues(createWordFormDefaults(payload.level));
         setAddWordDialogOpen(false);
         await Promise.all([fetchWords(), fetchWordSet()]);
       } catch (error) {
@@ -857,7 +893,56 @@ const WordSetDetailPage = () => {
         setAddWordSubmitting(false);
       }
     },
-    [fetchWordSet, fetchWords, id],
+    [fetchWordSet, fetchWords, id, mapFormToWordPayload],
+  );
+
+  const handleOpenEditWord = useCallback((row: WordRow) => {
+    const word = row.original;
+    setEditingWord(word);
+    setEditWordDefaults({
+      term: word.Term,
+      definition: word.Definition,
+      definitionVietnamese: valueOrEmpty(word.DefinitionVietnamese),
+      example: valueOrEmpty(word.Example),
+      typeOfWord: valueOrEmpty(word.TypeOfWord),
+      note: valueOrEmpty(word.Note),
+      level: word.Level,
+    });
+    setEditWordDialogOpen(true);
+  }, []);
+
+  const handleEditWordSubmit = useCallback(
+    async (values: SingleWordFormValues) => {
+      if (!editingWord) return;
+
+      const payload = mapFormToWordPayload(values);
+
+      if (!payload.term || !payload.definition) {
+        toast.error("Vui lòng nhập đầy đủ từ và định nghĩa.");
+        return;
+      }
+
+      setEditWordSubmitting(true);
+
+      try {
+        await wordSetsApi.updateWord(editingWord.Id, {
+          ...payload,
+          wordSetId: editingWord.WordSetId ?? id ?? undefined,
+        });
+
+        toast.success(`Đã cập nhật "${payload.term}".`);
+        setEditWordDialogOpen(false);
+        setEditingWord(null);
+        await Promise.all([fetchWords(), fetchWordSet()]);
+      } catch (error) {
+        console.error("Failed to update word", error);
+        const message = error instanceof Error ? error.message : "Không thể cập nhật từ lúc này.";
+        toast.error(message);
+      } finally {
+        setEditWordSubmitting(false);
+      }
+    },
+    [editingWord, fetchWordSet, fetchWords, id, mapFormToWordPayload],
   );
 
   const handleBulkSubmit = useCallback(
@@ -962,6 +1047,15 @@ const WordSetDetailPage = () => {
     }));
   }, [wordsState]);
 
+  const typeOfWordOptions = useMemo(
+    () =>
+      TYPE_OF_WORD_FILTER_OPTIONS.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
+    [],
+  );
+
   const singleWordFields = useMemo<FormFieldConfig<SingleWordFormValues>[]>(
     () => [
       {
@@ -970,6 +1064,7 @@ const WordSetDetailPage = () => {
         type: "text",
         placeholder: "Ví dụ: impetus",
         required: true,
+        colSpan: 2,
       },
       {
         name: "definition",
@@ -978,6 +1073,34 @@ const WordSetDetailPage = () => {
         placeholder: "Định nghĩa hoặc ghi chú",
         required: true,
         rows: 4,
+        colSpan: 2,
+      },
+      {
+        name: "definitionVietnamese",
+        label: "Nghĩa tiếng Việt",
+        type: "textarea",
+        rows: 3,
+        placeholder: "Dịch nghĩa sang tiếng Việt",
+        helperText: "Tùy chọn; hỗ trợ ghi nhớ nhanh.",
+        colSpan: 2,
+      },
+      {
+        name: "example",
+        label: "Ví dụ sử dụng",
+        type: "textarea",
+        rows: 3,
+        placeholder: "Ví dụ: The policy acted as an impetus for reform.",
+        colSpan: 2,
+      },
+      {
+        name: "typeOfWord",
+        label: "Loại từ",
+        type: "select",
+        options: typeOfWordOptions,
+        allowEmpty: true,
+        placeholder: "Chọn loại từ",
+        helperText: "Giúp phân loại khi lọc và luyện tập nâng cao.",
+        colSpan: 1,
       },
       {
         name: "level",
@@ -987,9 +1110,18 @@ const WordSetDetailPage = () => {
         max: 10,
         required: true,
         helperText: "Giá trị từ 1 đến 10",
+        colSpan: 1,
+      },
+      {
+        name: "note",
+        label: "Ghi chú",
+        type: "textarea",
+        rows: 3,
+        placeholder: "Ghi chú bổ sung (nguồn, mẹo ghi nhớ...)",
+        colSpan: 2,
       },
     ],
-    [],
+    [typeOfWordOptions],
   );
 
   const wordColumns = useMemo<ColumnDef<WordRow>[]>(
@@ -1110,8 +1242,7 @@ const WordSetDetailPage = () => {
         ),
         onClick: (selected) => {
           if (selected.length !== 1) return;
-          const word = selected[0];
-          toast.info(`Edit word "${word.header}" (ID: ${word.id})`);
+          handleOpenEditWord(selected[0]);
         },
         disabled: (selected) => selected.length !== 1,
       },
@@ -1132,7 +1263,7 @@ const WordSetDetailPage = () => {
         disabled: (selected) => selected.length === 0,
       },
     ],
-    [],
+    [handleOpenEditWord],
   );
 
   const handleTableSearchChange = useCallback((search: SearchRule | undefined) => {
@@ -1392,6 +1523,34 @@ const WordSetDetailPage = () => {
           cancelLabel="Hủy"
           onCancel={closeAddWordDialog}
           schema={singleWordFormSchema}
+          columns={2}
+        />
+      </ResponsiveDialog>
+
+      <ResponsiveDialog
+        open={editWordDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeEditWordDialog();
+          } else {
+            setEditWordDialogOpen(true);
+          }
+        }}
+        title="Chỉnh sửa từ vựng"
+        description="Cập nhật định nghĩa, ví dụ và ghi chú cho từ đã chọn."
+        desktopContentClassName="max-w-lg"
+      >
+        <FormBuilder<SingleWordFormValues>
+          key={editingWord?.Id ?? "edit-word"}
+          fields={singleWordFields}
+          defaultValues={editWordDefaults}
+          onSubmit={handleEditWordSubmit}
+          submitting={editWordSubmitting}
+          submitLabel="Lưu thay đổi"
+          cancelLabel="Hủy"
+          onCancel={closeEditWordDialog}
+          schema={singleWordFormSchema}
+          columns={2}
         />
       </ResponsiveDialog>
 

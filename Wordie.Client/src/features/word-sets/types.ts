@@ -1,17 +1,21 @@
 import type {
 	BulkCreateWordPayload,
+	CreateSingleWordPayload,
 	CreateWordSetPayload,
 	GeminiWordsPayload,
 	GeminiPreviewWord,
+	UpdateWordPayload,
 	UpdateWordSetPayload,
 	WordSet,
 	WordWithProgress,
 } from "@/core/word-sets/types";
 
 export type BulkCreateWordInput = BulkCreateWordPayload;
+export type CreateWordInput = CreateSingleWordPayload;
 export type CreateWordSetRequest = CreateWordSetPayload;
 export type GeminiWordsRequest = GeminiWordsPayload;
 export type { GeminiPreviewWord };
+export type UpdateWordInput = UpdateWordPayload;
 export type UpdateWordSetRequest = UpdateWordSetPayload;
 export type WordDto = WordWithProgress;
 

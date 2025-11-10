@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   IconArrowRight,
-  IconColumns3,
   IconEdit,
   IconPlayerPlay,
   IconPlus,
@@ -16,7 +15,6 @@ import { WordSetCard } from "@/features/word-sets/components/word-set-card";
 import { FilterGrid, type FilterGridPagination } from "@/shared/components/filter";
 import type { FilterFieldConfig, TableButton } from "@/shared/components/data-table";
 import { Button } from "@/shared/components/ui/button";
-import { Typography } from "@/shared/components/typography";
 import {
   Select,
   SelectContent,
@@ -34,7 +32,6 @@ const SORT_OPTIONS = [
   { label: "Tên Z-A", value: "Title|Desc" },
 ] as const;
 
-const COLUMN_OPTIONS = [2, 3, 4] as const;
 
 interface WordSetsGridSectionProps {
   items: WordSetDto[];
@@ -60,7 +57,6 @@ type WordSetCardItem = WordSetDto & { id: string };
 export function WordSetsGridSection({
   items,
   loading,
-  totalCount,
   filters,
   filterFields,
   searchableColumns,
@@ -78,7 +74,6 @@ export function WordSetsGridSection({
   const [selectedSortOption, setSelectedSortOption] = useState<string>(
     () => SORT_OPTIONS[0]?.value ?? ""
   );
-  const [gridColumns, setGridColumns] = useState<number>(3);
 
   useEffect(() => {
     if (!selectedSortOption) {
@@ -208,14 +203,6 @@ export function WordSetsGridSection({
     [onCreate, onDelete, onEdit, onStudy, onToggleFavorite, onViewDetails]
   );
 
-  const toolbarStartContent = useMemo(
-    () => (
-      <Typography variant="muted" className="text-xs text-muted-foreground md:text-sm">
-        {totalCount.toLocaleString()} bộ từ vựng
-      </Typography>
-    ),
-    [totalCount]
-  );
 
   const toolbarEndContent = useMemo(
     () => (
@@ -242,30 +229,10 @@ export function WordSetsGridSection({
           </Select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Label
-            htmlFor="word-set-columns"
-            className="hidden items-center gap-1 text-xs font-medium text-muted-foreground md:flex"
-          >
-            <IconColumns3 className="size-4" />
-            Cột
-          </Label>
-          <Select value={`${gridColumns}`} onValueChange={(value) => setGridColumns(Number(value))}>
-            <SelectTrigger id="word-set-columns" size="sm" className="w-[92px]">
-              <SelectValue placeholder={gridColumns} />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {COLUMN_OPTIONS.map((option) => (
-                <SelectItem key={option} value={`${option}`}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    
       </div>
     ),
-    [gridColumns, selectedSortOption]
+    [selectedSortOption]
   );
 
   return (
@@ -303,7 +270,6 @@ export function WordSetsGridSection({
       selectable
       buttons={toolbarButtons}
       groupToolbarButtons={false}
-      toolbarStartContent={toolbarStartContent}
       filters={filters}
       filterFields={filterFields}
       onFiltersChange={onFiltersChange}
@@ -311,7 +277,6 @@ export function WordSetsGridSection({
       searchableColumns={searchableColumns}
       searchPlaceholder="Tìm kiếm theo tiêu đề hoặc mô tả..."
       toolbarEndContent={toolbarEndContent}
-      columns={gridColumns}
       pagination={pagination}
     />
   );

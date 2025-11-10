@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   IconArrowRight,
-  IconColumns3,
   IconEdit,
   IconPlayerPlay,
   IconPlus,
@@ -86,7 +85,7 @@ export const WordSetsPage = () => {
   const queryClient = useQueryClient();
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(8);
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [sorts, setSorts] = useState<SortRule[]>([]);
   const [searchRule, setSearchRule] = useState<SearchRule | undefined>();
@@ -315,7 +314,6 @@ export const WordSetsPage = () => {
   const [selectedSortOption, setSelectedSortOption] = useState<string>(
     () => sortOptions[0]?.value ?? ""
   );
-  const [gridColumns, setGridColumns] = useState<number>(3);
 
   const handleFiltersChange = useCallback((nextFilters: FilterRule[]) => {
     setFilters(nextFilters);
@@ -493,14 +491,7 @@ export const WordSetsPage = () => {
     [state.items]
   );
 
-  const toolbarStartContent = useMemo(
-    () => (
-      <Typography variant="muted" className="text-xs text-muted-foreground md:text-sm">
-        {state.totalCount.toLocaleString()} bộ từ vựng
-      </Typography>
-    ),
-    [state.totalCount]
-  );
+
 
   const toolbarEndContent = useMemo(
     () => (
@@ -527,33 +518,10 @@ export const WordSetsPage = () => {
           </Select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Label
-            htmlFor="word-set-columns"
-            className="hidden items-center gap-1 text-xs font-medium text-muted-foreground md:flex"
-          >
-            <IconColumns3 className="size-4" />
-            Cột
-          </Label>
-          <Select
-            value={`${gridColumns}`}
-            onValueChange={(value) => setGridColumns(Number(value))}
-          >
-            <SelectTrigger id="word-set-columns" size="sm" className="w-[92px]">
-              <SelectValue placeholder={gridColumns} />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {[2, 3, 4].map((option) => (
-                <SelectItem key={option} value={`${option}`}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        
       </div>
     ),
-    [gridColumns, selectedSortOption, setSelectedSortOption, sortOptions]
+    [selectedSortOption, setSelectedSortOption, sortOptions]
   );
 
   return (
@@ -608,7 +576,6 @@ export const WordSetsPage = () => {
           selectable
           buttons={toolbarButtons}
           groupToolbarButtons={false}
-          toolbarStartContent={toolbarStartContent}
           filters={filters}
           filterFields={filterFields}
           onFiltersChange={handleFiltersChange}
@@ -616,8 +583,8 @@ export const WordSetsPage = () => {
           searchableColumns={searchableColumns}
           searchPlaceholder="Tìm kiếm theo tiêu đề hoặc mô tả..."
           toolbarEndContent={toolbarEndContent}
-          columns={gridColumns}
           pagination={pagination}
+          columns={4}
         />
       </PageSection>
 

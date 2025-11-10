@@ -11,12 +11,18 @@ var host = Host.CreateDefaultBuilder(args)
     .ConfigureAppConfiguration((ctx, config) =>
     {
         config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+        config.AddJsonFile($"appsettings.{ctx.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true);
     })
     .ConfigureServices((ctx, services) =>
     {
         var cfg = ctx.Configuration;
+        var connectionString = cfg.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured.");
+        }
         services.AddDbContext<ApplicationDbContext>(opts =>
-            opts.UseSqlServer(cfg.GetConnectionString("DefaultConnection") ?? "Server=db31895.public.databaseasp.net; Database=db31895; User Id=db31895; Password=Fa3+7#jARn9%; Encrypt=True; TrustServerCertificate=True; MultipleActiveResultSets=True;"));
+            opts.UseSqlServer(connectionString));
 
         // Register minimal Identity services so we can use UserManager/RoleManager in the seeder
         services.AddIdentityCore<Wordie.Domain.Entities.ApplicationUser>(opts =>
@@ -42,35 +48,32 @@ catch (Exception ex)
 }
 
 // Seed Roles and Admin user
-var roleManager = scope.ServiceProvider.GetService<RoleManager<IdentityRole>>();
-var userManager = scope.ServiceProvider.GetService<UserManager<Wordie.Domain.Entities.ApplicationUser>>();
-if (roleManager != null && userManager != null)
+var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+var userManager = scope.ServiceProvider.GetRequiredService<UserManager<Wordie.Domain.Entities.ApplicationUser>>();
+string[] roles = new[] { "Admin", "User" };
+foreach (var r in roles)
 {
-    string[] roles = new[] { "Admin", "User" };
-    foreach (var r in roles)
+    if (!await roleManager.RoleExistsAsync(r))
     {
-        if (!await roleManager.RoleExistsAsync(r))
-        {
-            await roleManager.CreateAsync(new IdentityRole(r));
-            Console.WriteLine($"Created role: {r}");
-        }
+        await roleManager.CreateAsync(new IdentityRole(r));
+        Console.WriteLine($"Created role: {r}");
     }
+}
 
-    var adminEmail = "admin@wordie.local";
-    var admin = await userManager.FindByEmailAsync(adminEmail);
-    if (admin == null)
+var adminEmail = "admin@wordie.local";
+var admin = await userManager.FindByEmailAsync(adminEmail);
+if (admin == null)
+{
+    admin = new Wordie.Domain.Entities.ApplicationUser { UserName = adminEmail, Email = adminEmail, DisplayName = "Administrator" };
+    var create = await userManager.CreateAsync(admin, "P@ssw0rd!");
+    if (create.Succeeded)
     {
-        admin = new Wordie.Domain.Entities.ApplicationUser { UserName = adminEmail, Email = adminEmail, DisplayName = "Administrator" };
-        var create = await userManager.CreateAsync(admin, "P@ssw0rd!");
-        if (create.Succeeded)
-        {
-            await userManager.AddToRoleAsync(admin, "Admin");
-            Console.WriteLine("Created admin user and assigned Admin role.");
-        }
-        else
-        {
-            Console.WriteLine($"Failed to create admin user: {string.Join(',', create.Errors.Select(e => e.Description))}");
-        }
+        await userManager.AddToRoleAsync(admin, "Admin");
+        Console.WriteLine("Created admin user and assigned Admin role.");
+    }
+    else
+    {
+        Console.WriteLine($"Failed to create admin user: {string.Join(',', create.Errors.Select(e => e.Description))}");
     }
 }
 

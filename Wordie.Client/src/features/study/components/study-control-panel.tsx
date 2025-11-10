@@ -3,6 +3,7 @@ import {
   type StartStudySessionRequest,
   type StudyCardDirection,
   STUDY_CARD_DIRECTION,
+  STUDY_MODE,
 } from "@/features/study/types";
 import type { WordSetDto, WordDto } from "@/features/word-sets/types";
 import {
@@ -77,6 +78,8 @@ export function StudyControlPanel({
     settings.Direction ?? STUDY_CARD_DIRECTION.TermToDefinition
   );
 
+  const isSmartMixMode = settings.Mode === STUDY_MODE.SmartMix;
+
   const handleUpdate = <Key extends keyof StartStudySessionRequest>(
     key: Key,
     value: StartStudySessionRequest[Key]
@@ -147,6 +150,28 @@ export function StudyControlPanel({
           </TooltipProvider>
         </CardContent>
       </Card>
+
+        {isSmartMixMode ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Smart mix</CardTitle>
+              <CardDescription>
+                Hệ thống sẽ hỏi bạn về việc đã biết từ nào trước khi luyện tập hỗn hợp nhiều dạng câu hỏi.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                Quy trình: sàng lọc nhanh tối đa 5 từ chưa chắc chắn, sau đó luân phiên flashcard, trắc nghiệm và nhập liệu
+                cho đến khi ghi nhớ, rồi chuyển sang nhóm kế tiếp.
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Tiết kiệm thời gian bằng bước xác nhận "đã biết" hoặc "cần học".</li>
+                <li>Tăng cường ghi nhớ nhờ tự động đổi dạng câu hỏi mỗi lượt.</li>
+                <li>Theo dõi tiến độ từng nhóm để biết đã nắm vững bao nhiêu từ.</li>
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
 
       <Card>
         <CardHeader>

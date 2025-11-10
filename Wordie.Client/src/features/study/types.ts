@@ -2,6 +2,7 @@ export const STUDY_MODE = {
   Flashcard: 1,
   MultipleChoice: 2,
   Typing: 3,
+  SmartMix: 4,
 } as const;
 
 export type StudyMode = (typeof STUDY_MODE)[keyof typeof STUDY_MODE];

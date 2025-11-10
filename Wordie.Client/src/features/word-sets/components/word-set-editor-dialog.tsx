@@ -37,6 +37,11 @@ const WORD_SET_FORM_FIELDS: FormFieldConfig<WordSetFormValues>[] = [
     placeholder: "Nhập tiêu đề",
     required: true,
     helperText: "Tên hiển thị trong danh sách word set.",
+    colSpan: 2,
+    inputProps: {
+      maxLength: 120,
+      autoComplete: "off",
+    },
   },
   {
     name: "description",
@@ -45,12 +50,14 @@ const WORD_SET_FORM_FIELDS: FormFieldConfig<WordSetFormValues>[] = [
     placeholder: "Mô tả ngắn gọn cho word set",
     rows: 4,
     helperText: "Tùy chọn; giúp bạn ghi chú nội dung bộ từ.",
+    colSpan: 2,
   },
   {
     name: "isFavorite",
     label: "Đánh dấu là yêu thích",
     type: "checkbox",
     description: "Hiển thị bộ từ trong danh sách yêu thích.",
+    colSpan: 2,
   },
 ];
 
@@ -161,7 +168,7 @@ export const WordSetEditorDialog = ({
         submitting={submitting}
         submitLabel={submitLabel}
         cancelLabel="Hủy"
-        columns={1}
+        columns={2}
         className="h-full"
         schema={wordSetFormSchema}
       />

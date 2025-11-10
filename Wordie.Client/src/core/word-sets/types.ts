@@ -52,6 +52,12 @@ export interface BulkCreateWordPayload {
   level: number
 }
 
+export type CreateSingleWordPayload = BulkCreateWordPayload
+
+export type UpdateWordPayload = CreateSingleWordPayload & {
+  wordSetId?: string | null
+}
+
 export interface GeminiWordsPayload {
   prompt: string
   defaultLevel?: number

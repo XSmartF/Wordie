@@ -300,7 +300,7 @@ public class StudySessionService : IStudySessionService
 
     private IReadOnlyList<string>? BuildOptions(IEnumerable<Word> allWords, Word target, StudyMode mode, StudyCardDirection direction)
     {
-        if (mode != StudyMode.MultipleChoice)
+        if (mode != StudyMode.MultipleChoice && mode != StudyMode.SmartMix)
         {
             return null;
         }

@@ -71,7 +71,6 @@ export interface FilterGridProps<T extends FilterItemBase> {
     icon?: React.ReactNode;
   };
   toolbarEndContent?: React.ReactNode;
-  toolbarStartContent?: React.ReactNode;
 }
 
 const DEFAULT_EMPTY = (
@@ -106,7 +105,6 @@ export function FilterGrid<T extends FilterItemBase>({
   onSelectionChange,
   primaryAction,
   toolbarEndContent,
-  toolbarStartContent,
 }: FilterGridProps<T>) {
   const [selectedIds, setSelectedIds] = React.useState<Set<FilterIdentifier>>(new Set());
   const [searchKeyword, setSearchKeyword] = React.useState("");
@@ -336,7 +334,6 @@ export function FilterGrid<T extends FilterItemBase>({
     <div className={cn("flex flex-col gap-4", className)}>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          {toolbarStartContent}
           {renderedButtons}
           {selectable && selectedItems.length > 0 ? (
             <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={clearSelection}>

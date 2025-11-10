@@ -23,6 +23,8 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+import { SmartMixWorkspace } from "./smart-mix-workspace";
+
 interface StudySessionWorkspaceProps {
   sessionId: string | null;
   settings: StartStudySessionRequest;
@@ -78,32 +80,38 @@ export function StudySessionWorkspace({ sessionId, settings }: StudySessionWorks
 
   type SubmitPayload = {
     rating: StudyRating;
+    progressId?: string;
     userAnswer?: string | null;
-    selected?: string[] | null;
+    selectedOptions?: string[] | null;
   };
 
   const submitMutation = useMutation<StudyAnswerResponse, unknown, SubmitPayload>({
-    mutationFn: async ({ rating, userAnswer, selected }: SubmitPayload) => {
-      if (!sessionId || !currentCard) {
-        throw new Error("Không tìm thấy thẻ hiện tại");
+    mutationFn: async ({ rating, userAnswer, selectedOptions, progressId }: SubmitPayload) => {
+      if (!sessionId) {
+        throw new Error("Thiếu thông tin phiên học");
       }
       const startedAt = cardStartTime.current ?? Date.now();
       const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
 
+      const targetProgressId = progressId ?? currentCard?.ProgressId;
+      if (!targetProgressId) {
+        throw new Error("Không tìm thấy thẻ hiện tại");
+      }
+
       return await studyApi.submitAnswer(sessionId, {
-        ProgressId: currentCard.ProgressId,
+        ProgressId: targetProgressId,
         Rating: rating,
         TimeSpentSeconds: elapsedSeconds,
         UserAnswer: userAnswer ?? null,
-        SelectedOptions: selected ?? null,
+        SelectedOptions: selectedOptions ?? null,
       });
     },
     onSuccess: (data: StudyAnswerResponse) => {
       updateSessionCache(data.Session);
-      if (data.NextCard) {
-        toast.success("Tiếp tục với thẻ tiếp theo");
-      } else if (data.Session.Status === STUDY_SESSION_STATUS.Completed) {
+      if (data.Session.Status === STUDY_SESSION_STATUS.Completed) {
         toast.success("Hoàn thành phiên học 🎉");
+      } else if (data.NextCard && data.Session.Settings.Mode !== STUDY_MODE.SmartMix) {
+        toast.success("Tiếp tục với thẻ tiếp theo");
       }
     },
     onError: (error: unknown) => {
@@ -118,10 +126,11 @@ export function StudySessionWorkspace({ sessionId, settings }: StudySessionWorks
     (rating: StudyRating) => {
       if (!currentCard || submitMutation.isPending) return;
 
-      const answerPayload = {
+      const answerPayload: SubmitPayload = {
         rating,
+        progressId: currentCard.ProgressId,
         userAnswer: typedAnswer || (revealed ? currentCard.ExpectedAnswer : undefined),
-        selected: selectedOption ? [selectedOption] : null,
+        selectedOptions: selectedOption ? [selectedOption] : null,
       };
 
       submitMutation.mutate(answerPayload);
@@ -295,7 +304,22 @@ export function StudySessionWorkspace({ sessionId, settings }: StudySessionWorks
   }
 
   const session = sessionQuery.data;
-  const modeLabel = mapModeToLabel(session?.Settings.Mode ?? settings.Mode);
+  const resolvedMode = session?.Settings.Mode ?? settings.Mode;
+
+  if (resolvedMode === STUDY_MODE.SmartMix && session) {
+    return (
+      <SmartMixWorkspace
+        session={session}
+        isSubmitting={submitMutation.isPending}
+        onSubmitAsync={submitMutation.mutateAsync}
+        onFocusCard={() => {
+          cardStartTime.current = Date.now();
+        }}
+      />
+    );
+  }
+
+  const modeLabel = mapModeToLabel(resolvedMode);
 
   return (
     <div className="flex h-full flex-col gap-6">
@@ -342,6 +366,8 @@ function mapModeToLabel(mode: number) {
       return "Multiple choice";
     case STUDY_MODE.Typing:
       return "Typing";
+    case STUDY_MODE.SmartMix:
+      return "Smart mix";
     default:
       return "Study";
   }
