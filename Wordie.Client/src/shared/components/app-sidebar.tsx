@@ -1,7 +1,6 @@
 import { type ComponentProps } from "react"
 import {
   IconDashboard,
-  IconInnerShadowTop,
   IconListDetails,
   IconSettings,
   IconStar,
